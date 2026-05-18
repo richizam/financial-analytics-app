@@ -323,3 +323,59 @@ export async function getComparativoData(
   if (!a || !b) return null
   return { a, b }
 }
+
+// ─── Configuración de empresa ─────────────────────────────────────────────────
+
+export interface CompanyConfig {
+  razonSocial: string
+  nombreComercial?: string
+  ruc: string
+  tipoContribuyente: string
+  clasificacion: string
+  niifFramework: string
+  cotizaEnBolsa: boolean
+  esEntidadFinanciera: boolean
+  regimenTributario: string
+  agenteRetencion: boolean
+  contribuyenteEspecial: boolean
+  sector: string
+  tieneInventarios: boolean
+  tieneActivosFijos: boolean
+  tieneArrendamientos: boolean
+  metodoInventarios?: string
+  mesInicioEjercicio: number
+  fuenteDatos: string
+  createdAt: string
+}
+
+/**
+ * Persiste la configuración de una empresa en data/empresas/[RUC]/config.json.
+ * Crea el directorio si no existe.
+ */
+export async function saveCompanyConfig(
+  config: CompanyConfig,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const dir = path.join(process.cwd(), 'data', 'empresas', config.ruc)
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, 'config.json'),
+      JSON.stringify(config, null, 2),
+      'utf8',
+    )
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+}
+
+/** Lee config.json de una empresa si existe, o null si no. */
+export async function getCompanyConfig(ruc: string): Promise<CompanyConfig | null> {
+  const p = path.join(process.cwd(), 'data', 'empresas', ruc, 'config.json')
+  if (!fs.existsSync(p)) return null
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8')) as CompanyConfig
+  } catch {
+    return null
+  }
+}

@@ -1,4 +1,4 @@
-import { getAvailableRucs, getAllPeriods, getDashboardData } from './actions'
+import { getAvailableRucs, getAllPeriods, getDashboardData, getCompanyConfig } from './actions'
 import Dashboard from '@/components/dashboard/Dashboard'
 
 export default async function Home() {
@@ -18,17 +18,27 @@ export default async function Home() {
 
   const periodsByRuc = await getAllPeriods(rucs)
 
-  // ── Selección por defecto: primer RUC, último año con todos los meses disponibles ──
-  const defaultRuc = rucs[0]
+  // Leer nombres de empresa desde config.json de cada RUC (si existe)
+  const companyNames: Record<string, string> = {}
+  for (const ruc of rucs) {
+    const cfg = await getCompanyConfig(ruc)
+    companyNames[ruc] = cfg?.razonSocial ?? ruc
+  }
+
+  // ── Selección por defecto: preferir un RUC con datos CSV ──
+  const defaultRuc = rucs.find(r => (periodsByRuc[r] ?? []).length > 0) ?? rucs[0]
   const allPeriods = periodsByRuc[defaultRuc] ?? []
   const years      = [...new Set(allPeriods.map(p => p.substring(0, 4)))].sort()
   const lastYear   = years[years.length - 1] ?? ''
   const defaultPeriods = allPeriods.filter(p => p.startsWith(lastYear))
 
-  // ── Pre-calcular datos iniciales (SSR) ──
-  const initialData = await getDashboardData(defaultRuc, defaultPeriods)
+  // null cuando no hay archivos CSV aún (el Dashboard muestra pantalla de bienvenida)
+  const initialData = defaultPeriods.length > 0
+    ? await getDashboardData(defaultRuc, defaultPeriods)
+    : null
 
-  if (!initialData) {
+  // Solo error real cuando había períodos pero falló la carga
+  if (defaultPeriods.length > 0 && !initialData) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50">
         <p className="text-sm text-gray-500">Error al cargar los datos iniciales.</p>
@@ -43,6 +53,7 @@ export default async function Home() {
       initialRuc={defaultRuc}
       initialPeriods={defaultPeriods}
       initialData={initialData}
+      companyNames={companyNames}
     />
   )
 }
