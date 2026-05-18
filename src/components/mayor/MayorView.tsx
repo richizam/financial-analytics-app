@@ -3,10 +3,10 @@
 import { useState, useTransition } from 'react'
 import { Download, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { getMayorPageData } from '@/app/actions'
+import { getMayorPageData, getMayorCompletoData } from '@/app/actions'
 import type { MayorPageData } from '@/app/actions'
 import { fmtNumero, fmtContable, fmtPeriodo } from '@/lib/format'
-import { exportarMayor } from '@/lib/excel-export'
+import { exportarMayor, exportarMayorCompleto } from '@/lib/excel-export'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 
 interface MayorViewProps {
@@ -27,7 +27,8 @@ export default function MayorView({
   const [selectedRuc, setSelectedRuc]       = useState(initialRuc)
   const [selectedPeriods, setSelectedPeriods] = useState(initialPeriods)
   const [data, setData]                     = useState(initialData)
-  const [isPending, startTransition]        = useTransition()
+  const [isPending, startTransition]          = useTransition()
+  const [isPendingCompleto, startCompleto]    = useTransition()
 
   function reload(ruc: string, periods: string[], cuenta: string | null) {
     if (periods.length === 0) return
@@ -58,6 +59,13 @@ export default function MayorView({
 
   function handleExport() {
     if (data.mayor) exportarMayor(selectedRuc, selectedPeriods, data.mayor)
+  }
+
+  function handleExportCompleto() {
+    startCompleto(async () => {
+      const majors = await getMayorCompletoData(selectedRuc, selectedPeriods)
+      exportarMayorCompleto(selectedRuc, selectedPeriods, majors)
+    })
   }
 
   const { mayor, cuentas, selectedCuenta } = data
@@ -106,12 +114,20 @@ export default function MayorView({
                 onPeriodsChange={handlePeriodsChange}
               />
               <button
+                onClick={handleExportCompleto}
+                disabled={isPending || isPendingCompleto}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {isPendingCompleto ? 'Generando…' : 'Exportar todas las cuentas'}
+              </button>
+              <button
                 onClick={handleExport}
                 disabled={isPending || !mayor}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" />
-                Exportar Excel
+                Exportar cuenta
               </button>
             </div>
           </div>

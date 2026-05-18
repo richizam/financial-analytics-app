@@ -107,10 +107,16 @@ Si el bug está en parser.ts, corregir SOLO parser.ts.
 - No redondear montos con `Math.round` — usar función `roundFinancial()` de `/lib/math.ts`
 - No modificar componentes marcados como ESTABLE sin aprobación explícita
 
+## Regla de builds
+NUNCA ejecutar `npm run build` mientras el servidor de desarrollo está corriendo.
+`npm run build` sobreescribe `.next/` y rompe el Tailwind JIT del servidor dev, dejando la app sin estilos CSS.
+Para verificar TypeScript usar solo `npx tsc --noEmit` — no afecta el servidor.
+
 ## Comandos útiles del proyecto
 ```bash
-npm run dev          # desarrollo
-npm run build        # producción
+npm run dev          # desarrollo (Tailwind JIT activo)
+npx tsc --noEmit     # verificar tipos sin tocar el servidor
+npm run build        # producción — solo cuando el dev server está DETENIDO
 npm run db:migrate   # migraciones Prisma
 npm run db:seed      # datos de prueba
 npm run test         # Jest

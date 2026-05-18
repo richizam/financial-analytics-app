@@ -217,3 +217,70 @@ export async function getMayorPageData(
     selectedCuenta: selected,
   }
 }
+
+/**
+ * Devuelve el mayor completo de TODAS las cuentas del período,
+ * ordenadas por código. Usado para la exportación global a Excel.
+ */
+export async function getMayorCompletoData(
+  ruc: string,
+  periodos: string[],
+): Promise<MayorData[]> {
+  if (periodos.length === 0) return []
+
+  const sorted = [...periodos].sort()
+  const year = yearFromPeriod(sorted[0])
+
+  const { entries } = parseMultiplePeriods(ruc, sorted)
+  const opening = loadOpeningBalances(ruc, year)
+
+  const cuentaMap = new Map<string, string>()
+  for (const e of entries) cuentaMap.set(e.codCuenta, e.nombreCuenta)
+  for (const [cod, s] of opening) {
+    if (!cuentaMap.has(cod)) cuentaMap.set(cod, s.nombreCuenta)
+  }
+
+  const codigos = [...cuentaMap.keys()].sort()
+
+  return codigos.map(cod => {
+    const openingEntry = opening.get(cod)
+    const saldoInicial = openingEntry?.saldo ?? 0
+    const nombreCuenta = cuentaMap.get(cod) ?? cod
+
+    const accountEntries = entries
+      .filter(e => e.codCuenta === cod)
+      .sort((a, b) => {
+        const d = a.fecha.localeCompare(b.fecha)
+        return d !== 0 ? d : a.asiento.localeCompare(b.asiento)
+      })
+
+    let saldoAcumulado = saldoInicial
+    let totalDebe = 0
+    let totalHaber = 0
+
+    const mayorEntries: MayorEntry[] = accountEntries.map(e => {
+      saldoAcumulado += e.debe - e.haber
+      totalDebe      += e.debe
+      totalHaber     += e.haber
+      return {
+        fecha:       e.fecha,
+        asiento:     e.asiento,
+        tipo:        e.tipo,
+        descripcion: e.descripcion,
+        debe:        e.debe,
+        haber:       e.haber,
+        saldo:       saldoAcumulado,
+      }
+    })
+
+    return {
+      codCuenta: cod,
+      nombreCuenta,
+      saldoInicial,
+      entries:    mayorEntries,
+      totalDebe,
+      totalHaber,
+      saldoFinal: saldoAcumulado,
+    }
+  })
+}

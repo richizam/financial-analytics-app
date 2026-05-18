@@ -175,6 +175,72 @@ function buildRatiosSheet(metricas: MetricsResult): XLSX.WorkSheet {
   return ws
 }
 
+// ─── Mayor Completo (todas las cuentas, una sola hoja) ───────────────────────
+
+export function exportarMayorCompleto(ruc: string, periods: string[], majors: MayorData[]): void {
+  const rows: Row[] = []
+
+  rows.push(['Cod_Cuenta', 'Nombre_Cuenta', 'Fecha', 'N_Asiento', 'Descripcion', 'Debe', 'Haber', 'Saldo_Acumulado'])
+
+  for (const mayor of majors) {
+    // Fila de apertura
+    rows.push([
+      mayor.codCuenta,
+      mayor.nombreCuenta,
+      'Apertura',
+      '—',
+      'Saldo inicial del año',
+      null,
+      null,
+      c(mayor.saldoInicial),
+    ])
+    // Movimientos cronológicos
+    for (const e of mayor.entries) {
+      rows.push([
+        mayor.codCuenta,
+        mayor.nombreCuenta,
+        e.fecha,
+        e.asiento,
+        e.descripcion,
+        e.debe  > 0 ? c(e.debe)  : null,
+        e.haber > 0 ? c(e.haber) : null,
+        c(e.saldo),
+      ])
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+
+  // Autofilter sobre todas las columnas y todas las filas de datos
+  ws['!autofilter'] = { ref: `A1:H${rows.length}` }
+
+  ws['!cols'] = [
+    { wch: 14 }, { wch: 36 }, { wch: 12 }, { wch: 20 },
+    { wch: 50 }, { wch: 14 }, { wch: 14 }, { wch: 16 },
+  ]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Mayor Completo')
+
+  const sorted = [...periods].sort()
+  const year  = sorted[0]?.substring(0, 4) ?? ''
+  const range = sorted.length === 1 ? sorted[0] : `${sorted[0]}-${sorted[sorted.length - 1]}`
+  const filename = `${ruc}_Mayor_Completo_${year}_${range}.xlsx`
+
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // ─── API pública ──────────────────────────────────────────────────────────────
 
 export function buildFilename(ruc: string, periods: string[]): string {
