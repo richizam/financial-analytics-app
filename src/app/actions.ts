@@ -13,6 +13,8 @@ import {
 } from '@/lib/parser'
 import { generarESF, generarERI } from '@/lib/statements'
 import { calcularMetricas } from '@/lib/metrics'
+import { analyzeAnomalies } from '@/lib/anomalies'
+import type { AnomaliesData } from '@/lib/anomalies'
 import { fmtPeriodo } from '@/lib/format'
 import type { ESF, ERI } from '@/lib/statements'
 import type { MetricsResult } from '@/lib/metrics'
@@ -242,7 +244,7 @@ export async function getMayorCompletoData(
 
   const codigos = [...cuentaMap.keys()].sort()
 
-  return codigos.map(cod => {
+  return codigos.map((cod) => {
     const openingEntry = opening.get(cod)
     const saldoInicial = openingEntry?.saldo ?? 0
     const nombreCuenta = cuentaMap.get(cod) ?? cod
@@ -283,4 +285,17 @@ export async function getMayorCompletoData(
       saldoFinal: saldoAcumulado,
     }
   })
+}
+
+export type { AnomaliesData }
+
+/** Ejecuta los 4 análisis de anomalías sobre el conjunto de asientos del período. */
+export async function getAnomaliesData(
+  ruc: string,
+  periodos: string[],
+): Promise<AnomaliesData | null> {
+  if (periodos.length === 0) return null
+  const sorted = [...periodos].sort()
+  const { entries } = parseMultiplePeriods(ruc, sorted)
+  return analyzeAnomalies(entries)
 }
