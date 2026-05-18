@@ -88,15 +88,13 @@ export interface DuplicateGroup {
   entries: DuplicateEntry[]
 }
 
-function dayIndex(fecha: string): number {
-  return Math.floor(new Date(fecha).getTime() / 86_400_000)
-}
 
 export function findDuplicates(entries: JournalEntry[]): DuplicateGroup[] {
-  // Agrupar por (codCuenta, debe, haber) — misma firma contable exacta
+  // Clave: fecha exacta + codCuenta + monto (debe o haber) + descripción exacta
   const bySignature = new Map<string, JournalEntry[]>()
   for (const e of entries) {
-    const key = `${e.codCuenta}|${e.debe}|${e.haber}`
+    const monto = e.debe > 0 ? e.debe : e.haber
+    const key = `${e.fecha}|${e.codCuenta}|${monto}|${e.descripcion}`
     const g = bySignature.get(key) ?? []
     g.push(e)
     bySignature.set(key, g)
@@ -107,30 +105,19 @@ export function findDuplicates(entries: JournalEntry[]): DuplicateGroup[] {
   for (const [key, group] of bySignature) {
     if (group.length < 2) continue
 
-    const sorted = [...group].sort((a, b) => a.fecha.localeCompare(b.fecha))
-    const duplicateSet = new Set<JournalEntry>()
+    // Solo cuenta como duplicado si hay al menos 2 números de asiento distintos
+    const uniqueAsientos = new Set(group.map(e => e.asiento))
+    if (uniqueAsientos.size < 2) continue
 
-    for (let i = 0; i < sorted.length; i++) {
-      for (let j = i + 1; j < sorted.length; j++) {
-        if (sorted[i].asiento === sorted[j].asiento) continue  // mismas líneas = normal
-        const dayDiff = Math.abs(dayIndex(sorted[j].fecha) - dayIndex(sorted[i].fecha))
-        if (dayDiff <= 3) {
-          duplicateSet.add(sorted[i])
-          duplicateSet.add(sorted[j])
-        }
-      }
-    }
-
-    if (duplicateSet.size >= 2) {
-      const parts = key.split('|')
-      const codCuenta = parts[0]
-      const monto = Math.max(group[0].debe, group[0].haber)
-      groups.push({
-        monto,
-        codCuenta,
-        nombreCuenta: group[0].nombreCuenta,
-        entries: [...duplicateSet]
-          .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    const parts = key.split('|')
+    const codCuenta = parts[1]
+    const monto = parseInt(parts[2], 10)
+    groups.push({
+      monto,
+      codCuenta,
+      nombreCuenta: group[0].nombreCuenta,
+      entries: [...group]
+        .sort((a, b) => a.asiento.localeCompare(b.asiento))
           .map(e => ({
             fecha:        e.fecha,
             asiento:      e.asiento,
@@ -140,8 +127,7 @@ export function findDuplicates(entries: JournalEntry[]): DuplicateGroup[] {
             debe:         e.debe,
             haber:        e.haber,
           })),
-      })
-    }
+    })
   }
 
   return groups.sort((a, b) => b.monto - a.monto)
