@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ─── Enums: Autenticación ──────────────────────────────────────────────────────
@@ -23,7 +24,6 @@ enum TipoContribuyente {
   persona_natural_no_obligada
 }
 
-// Clasificación SCVS — Resolución No. SCVS-INC-DNCDN-2021-0021
 enum CompanyClass {
   grande
   mediana
@@ -31,18 +31,17 @@ enum CompanyClass {
   microempresa
 }
 
-// Marco normativo determinado por clasificación + obligación pública
 enum NiifFramework {
-  niif_completas  // Grandes, cotizadas, entidades financieras
-  niif_pymes      // Medianas y pequeñas sin obligación pública
-  rimpe           // Microempresas — régimen simplificado SRI
+  niif_completas
+  niif_pymes
+  rimpe
 }
 
 enum RegimenTributario {
   general
-  rimpe_microempresa      // Ingresos < $300K
-  rimpe_negocio_popular   // Ingresos < $20K
-  regimen_especial        // Cooperativas, fundaciones, ONG
+  rimpe_microempresa
+  rimpe_negocio_popular
+  regimen_especial
 }
 
 enum SectorEconomico {
@@ -71,7 +70,6 @@ enum MetodoDepreciacion {
   saldo_decreciente
 }
 
-// NIC 16: modelo de medición posterior de PPE
 enum ModeloPPE {
   costo
   revaluacion
@@ -83,85 +81,115 @@ enum FuenteDatos {
   ambos
 }
 
-// ─── Modelo: Company ───────────────────────────────────────────────────────────
+// ─── NextAuth: Account ─────────────────────────────────────────────────────────
 
-model Company {
-  id                          String             @id @default(cuid())
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
-  // Identidad legal (Paso 1 del wizard)
-  razonSocial                 String
-  nombreComercial             String?
-  ruc                         String             @unique
-  tipoContribuyente           TipoContribuyente
-  representanteLegal          String?
-  correoContacto              String?
-  telefonoContacto            String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Clasificación y marco normativo (Paso 2)
-  activosTotalesUSD           Int?               // en centavos
-  ingresosUSD                 Int?               // en centavos
-  numeroEmpleados             Int?
-  clasificacion               CompanyClass
-  cotizaEnBolsa               Boolean            @default(false)
-  esEntidadFinanciera         Boolean            @default(false)
-  tieneObligacionPublica      Boolean            @default(false)
-  niifFramework               NiifFramework
+  @@unique([provider, providerAccountId])
+}
 
-  // Régimen tributario (Paso 3)
-  regimenTributario           RegimenTributario
-  obligadoContabilidad        Boolean            @default(true)
-  agenteRetencion             Boolean            @default(false)
-  contribuyenteEspecial       Boolean            @default(false)
-  resolucionContribEspecial   String?
+// ─── NextAuth: Session ─────────────────────────────────────────────────────────
 
-  // Sector económico (Paso 4)
-  sector                      SectorEconomico
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
 
-  // Configuración contable (Paso 5)
-  mesInicioEjercicio          Int                @default(1)
-  monedaFuncional             String             @default("USD")
-  tieneInventarios            Boolean            @default(false)
-  tieneActivosFijos           Boolean            @default(true)
-  tieneArrendamientos         Boolean            @default(false)   // NIIF 16
-  tieneBeneficiosEmpleados    Boolean            @default(false)   // NIC 19
-  tieneInstrumentosFinancieros Boolean           @default(false)   // NIIF 9
-  tieneMonedaExtranjera       Boolean            @default(false)   // NIC 21
-  tieneSubsidiarias           Boolean            @default(false)   // NIIF 10
-  metodoInventarios           MetodoInventario?
-  metodoDepreciacion          MetodoDepreciacion @default(lineal)
-  modeloMedicionPPE           ModeloPPE          @default(costo)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
 
-  // Fuente de datos (Paso 6)
-  fuenteDatos                 FuenteDatos
-  pbiWorkspaceId              String?
-  pbiDatasetId                String?
+// ─── NextAuth: VerificationToken ──────────────────────────────────────────────
 
-  active                      Boolean            @default(true)
-  createdAt                   DateTime           @default(now())
-  updatedAt                   DateTime           @updatedAt
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
 
-  // Relaciones
-  users                       UserCompany[]
+  @@unique([identifier, token])
 }
 
 // ─── Modelo: User ──────────────────────────────────────────────────────────────
 
 model User {
-  id           String      @id @default(cuid())
-  email        String      @unique
-  name         String
-  passwordHash String
-  active       Boolean     @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  active        Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  // Relaciones
-  companies    UserCompany[]
-  auditLogs    AuditLog[]
+  accounts  Account[]
+  sessions  Session[]
+  companies UserCompany[]
+  auditLogs AuditLog[]
 }
 
-// ─── Modelo: UserCompany (pivote multi-empresa) ────────────────────────────────
+// ─── Modelo: Company ───────────────────────────────────────────────────────────
+
+model Company {
+  id                           String             @id @default(cuid())
+  razonSocial                  String
+  nombreComercial              String?
+  ruc                          String             @unique
+  tipoContribuyente            TipoContribuyente
+  representanteLegal           String?
+  correoContacto               String?
+  telefonoContacto             String?
+  activosTotalesUSD            Int?
+  ingresosUSD                  Int?
+  numeroEmpleados              Int?
+  clasificacion                CompanyClass
+  cotizaEnBolsa                Boolean            @default(false)
+  esEntidadFinanciera          Boolean            @default(false)
+  tieneObligacionPublica       Boolean            @default(false)
+  niifFramework                NiifFramework
+  regimenTributario            RegimenTributario
+  obligadoContabilidad         Boolean            @default(true)
+  agenteRetencion              Boolean            @default(false)
+  contribuyenteEspecial        Boolean            @default(false)
+  resolucionContribEspecial    String?
+  sector                       SectorEconomico
+  mesInicioEjercicio           Int                @default(1)
+  monedaFuncional              String             @default("USD")
+  tieneInventarios             Boolean            @default(false)
+  tieneActivosFijos            Boolean            @default(true)
+  tieneArrendamientos          Boolean            @default(false)
+  tieneBeneficiosEmpleados     Boolean            @default(false)
+  tieneInstrumentosFinancieros Boolean            @default(false)
+  tieneMonedaExtranjera        Boolean            @default(false)
+  tieneSubsidiarias            Boolean            @default(false)
+  metodoInventarios            MetodoInventario?
+  metodoDepreciacion           MetodoDepreciacion @default(lineal)
+  modeloMedicionPPE            ModeloPPE          @default(costo)
+  fuenteDatos                  FuenteDatos
+  pbiWorkspaceId               String?
+  pbiDatasetId                 String?
+  active                       Boolean            @default(true)
+  createdAt                    DateTime           @default(now())
+  updatedAt                    DateTime           @updatedAt
+
+  users UserCompany[]
+}
+
+// ─── Modelo: UserCompany ───────────────────────────────────────────────────────
 
 model UserCompany {
   id        String   @id @default(cuid())
@@ -174,7 +202,6 @@ model UserCompany {
   user    User    @relation(fields: [userId],    references: [id])
   company Company @relation(fields: [companyId], references: [id])
 
-  // Un usuario tiene un solo rol por empresa
   @@unique([userId, companyId])
 }
 
@@ -183,9 +210,9 @@ model UserCompany {
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String
-  action    String   // "auth:login", "data:upload", "report:export", "user:create"
-  resource  String?  // ID del recurso afectado (companyId, reportId, etc.)
-  details   Json?    // metadata adicional (período, filas procesadas, etc.)
+  action    String
+  resource  String?
+  details   Json?
   ip        String?
   createdAt DateTime @default(now())
 
