@@ -1,0 +1,33 @@
+{
+  "name": "financial-analytics-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.8.0",
+    "lucide-react": "^1.16.0",
+    "next": "14.2.35",
+    "prisma": "^7.8.0",
+    "react": "^18",
+    "react-dom": "^18",
+    "recharts": "^3.8.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10",
+    "postcss": "^8",
+    "tailwindcss": "^3.4",
+    "tsx": "^4.22.1",
+    "typescript": "^5"
+  }
+}

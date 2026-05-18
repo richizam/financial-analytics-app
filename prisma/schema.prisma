@@ -1,0 +1,196 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums: Autenticación ──────────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  contador
+  auditor
+  gerente
+}
+
+// ─── Enums: Empresa ────────────────────────────────────────────────────────────
+
+enum TipoContribuyente {
+  sociedad
+  persona_natural_obligada
+  persona_natural_no_obligada
+}
+
+// Clasificación SCVS — Resolución No. SCVS-INC-DNCDN-2021-0021
+enum CompanyClass {
+  grande
+  mediana
+  pequena
+  microempresa
+}
+
+// Marco normativo determinado por clasificación + obligación pública
+enum NiifFramework {
+  niif_completas  // Grandes, cotizadas, entidades financieras
+  niif_pymes      // Medianas y pequeñas sin obligación pública
+  rimpe           // Microempresas — régimen simplificado SRI
+}
+
+enum RegimenTributario {
+  general
+  rimpe_microempresa      // Ingresos < $300K
+  rimpe_negocio_popular   // Ingresos < $20K
+  regimen_especial        // Cooperativas, fundaciones, ONG
+}
+
+enum SectorEconomico {
+  comercial
+  servicios
+  industrial
+  construccion
+  agricola
+  financiero
+  salud
+  educacion
+  tecnologia
+  transporte
+  minero_petroleo
+  otro
+}
+
+enum MetodoInventario {
+  promedio_ponderado
+  fifo
+}
+
+enum MetodoDepreciacion {
+  lineal
+  unidades_produccion
+  saldo_decreciente
+}
+
+// NIC 16: modelo de medición posterior de PPE
+enum ModeloPPE {
+  costo
+  revaluacion
+}
+
+enum FuenteDatos {
+  excel
+  powerbi
+  ambos
+}
+
+// ─── Modelo: Company ───────────────────────────────────────────────────────────
+
+model Company {
+  id                          String             @id @default(cuid())
+
+  // Identidad legal (Paso 1 del wizard)
+  razonSocial                 String
+  nombreComercial             String?
+  ruc                         String             @unique
+  tipoContribuyente           TipoContribuyente
+  representanteLegal          String?
+  correoContacto              String?
+  telefonoContacto            String?
+
+  // Clasificación y marco normativo (Paso 2)
+  activosTotalesUSD           Int?               // en centavos
+  ingresosUSD                 Int?               // en centavos
+  numeroEmpleados             Int?
+  clasificacion               CompanyClass
+  cotizaEnBolsa               Boolean            @default(false)
+  esEntidadFinanciera         Boolean            @default(false)
+  tieneObligacionPublica      Boolean            @default(false)
+  niifFramework               NiifFramework
+
+  // Régimen tributario (Paso 3)
+  regimenTributario           RegimenTributario
+  obligadoContabilidad        Boolean            @default(true)
+  agenteRetencion             Boolean            @default(false)
+  contribuyenteEspecial       Boolean            @default(false)
+  resolucionContribEspecial   String?
+
+  // Sector económico (Paso 4)
+  sector                      SectorEconomico
+
+  // Configuración contable (Paso 5)
+  mesInicioEjercicio          Int                @default(1)
+  monedaFuncional             String             @default("USD")
+  tieneInventarios            Boolean            @default(false)
+  tieneActivosFijos           Boolean            @default(true)
+  tieneArrendamientos         Boolean            @default(false)   // NIIF 16
+  tieneBeneficiosEmpleados    Boolean            @default(false)   // NIC 19
+  tieneInstrumentosFinancieros Boolean           @default(false)   // NIIF 9
+  tieneMonedaExtranjera       Boolean            @default(false)   // NIC 21
+  tieneSubsidiarias           Boolean            @default(false)   // NIIF 10
+  metodoInventarios           MetodoInventario?
+  metodoDepreciacion          MetodoDepreciacion @default(lineal)
+  modeloMedicionPPE           ModeloPPE          @default(costo)
+
+  // Fuente de datos (Paso 6)
+  fuenteDatos                 FuenteDatos
+  pbiWorkspaceId              String?
+  pbiDatasetId                String?
+
+  active                      Boolean            @default(true)
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+
+  // Relaciones
+  users                       UserCompany[]
+}
+
+// ─── Modelo: User ──────────────────────────────────────────────────────────────
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  name         String
+  passwordHash String
+  active       Boolean     @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Relaciones
+  companies    UserCompany[]
+  auditLogs    AuditLog[]
+}
+
+// ─── Modelo: UserCompany (pivote multi-empresa) ────────────────────────────────
+
+model UserCompany {
+  id        String   @id @default(cuid())
+  userId    String
+  companyId String
+  role      UserRole
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId],    references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+
+  // Un usuario tiene un solo rol por empresa
+  @@unique([userId, companyId])
+}
+
+// ─── Modelo: AuditLog ─────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // "auth:login", "data:upload", "report:export", "user:create"
+  resource  String?  // ID del recurso afectado (companyId, reportId, etc.)
+  details   Json?    // metadata adicional (período, filas procesadas, etc.)
+  ip        String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}

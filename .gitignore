@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# environment variables
+.env.local
+.env*.local
+
+# data empresas (solo el contador modifica estos archivos)
+data/
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+tsconfig.tsbuildinfo
