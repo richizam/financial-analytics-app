@@ -299,3 +299,27 @@ export async function getAnomaliesData(
   const { entries } = parseMultiplePeriods(ruc, sorted)
   return analyzeAnomalies(entries)
 }
+
+// ─── Comparativo ──────────────────────────────────────────────────────────────
+
+export interface ComparativoData {
+  a: DashboardData
+  b: DashboardData
+}
+
+/**
+ * Calcula dos conjuntos de datos del dashboard en paralelo para comparar períodos.
+ */
+export async function getComparativoData(
+  ruc: string,
+  periodosA: string[],
+  periodosB: string[],
+): Promise<ComparativoData | null> {
+  if (periodosA.length === 0 || periodosB.length === 0) return null
+  const [a, b] = await Promise.all([
+    getDashboardData(ruc, periodosA),
+    getDashboardData(ruc, periodosB),
+  ])
+  if (!a || !b) return null
+  return { a, b }
+}

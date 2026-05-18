@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
 import type { ESF, ERI, StatementSection } from './statements'
 import type { MetricsResult, Ratio, SemaferoEstado } from './metrics'
-import type { MayorData } from '@/app/actions'
+import type { MayorData, DashboardData } from '@/app/actions'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -319,6 +319,143 @@ export function exportarMayor(ruc: string, periods: string[], mayor: MayorData):
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+// ─── Comparativo ──────────────────────────────────────────────────────────────
+
+function buildComparativoERISheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): XLSX.WorkSheet {
+  const ea = a.eri
+  const eb = b.eri
+  const rows: Row[] = []
+
+  rows.push(['Concepto', labelA, labelB, 'Var $', 'Var %'])
+  rows.push([])
+
+  function addRow(concepto: string, va: number, vb: number, isMargen = false) {
+    const diff = vb - va
+    const pct = va !== 0 ? diff / Math.abs(va) : null
+    if (isMargen) {
+      rows.push([concepto, va, vb, null, pct])
+    } else {
+      rows.push([concepto, c(va), c(vb), c(diff), pct])
+    }
+  }
+
+  addRow('Ingresos netos', ea.ingresos.total, eb.ingresos.total)
+  addRow('(-) Costo de ventas', ea.costoVentas.total, eb.costoVentas.total)
+  addRow('Utilidad bruta', ea.utilidadBruta, eb.utilidadBruta)
+  addRow('  Margen bruto', ea.margenBruto, eb.margenBruto, true)
+  addRow('(-) Gastos de operación', ea.gastosOperacion.total, eb.gastosOperacion.total)
+  addRow('EBIT (Utilidad operacional)', ea.utilidadOperacional, eb.utilidadOperacional)
+  addRow('EBITDA', ea.ebitda, eb.ebitda)
+  addRow('  Margen EBITDA', ea.margenEbitda, eb.margenEbitda, true)
+  addRow('Utilidad antes de PT e IR', ea.utilidadAntesParticipacion, eb.utilidadAntesParticipacion)
+  addRow('(-) Participación trabajadores', ea.participacionTrabajadores, eb.participacionTrabajadores)
+  addRow('(-) Impuesto a la renta', ea.impuestoRenta, eb.impuestoRenta)
+  rows.push([])
+  addRow('UTILIDAD NETA', ea.utilidadNeta, eb.utilidadNeta)
+  addRow('  Margen neto', ea.margenNeto, eb.margenNeto, true)
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 38 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 12 }]
+  return ws
+}
+
+function buildComparativoRatiosSheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): XLSX.WorkSheet {
+  const rows: Row[] = []
+  rows.push(['Categoría', 'Ratio', labelA, labelB, 'Var %'])
+  rows.push([])
+
+  const grupos: [string, Ratio[], Ratio[]][] = [
+    ['Rentabilidad',  a.metricas.rentabilidad,  b.metricas.rentabilidad],
+    ['Liquidez',      a.metricas.liquidez,       b.metricas.liquidez],
+    ['Endeudamiento', a.metricas.endeudamiento,  b.metricas.endeudamiento],
+    ['Eficiencia',    a.metricas.eficiencia,     b.metricas.eficiencia],
+  ]
+
+  for (const [cat, ratiosA, ratiosB] of grupos) {
+    for (let i = 0; i < ratiosA.length; i++) {
+      const rA = ratiosA[i]
+      const rB = ratiosB[i]
+      const va = rA.valor ?? 0
+      const vb = rB?.valor ?? 0
+      const pct = va !== 0 ? (vb - va) / Math.abs(va) : null
+      rows.push([cat, rA.etiqueta, valorRatio(rA), rB ? valorRatio(rB) : 'N/D', pct])
+    }
+    rows.push([])
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 15 }, { wch: 42 }, { wch: 14 }, { wch: 14 }, { wch: 12 }]
+  return ws
+}
+
+function buildComparativoKPISheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): XLSX.WorkSheet {
+  const ea = a.eri
+  const eb = b.eri
+  const rows: Row[] = []
+
+  rows.push(['KPI', labelA, labelB, 'Var $', 'Var %'])
+  rows.push([])
+
+  function addKPI(nombre: string, va: number, vb: number, isMoneda = true) {
+    const diff = vb - va
+    const pct = va !== 0 ? diff / Math.abs(va) : null
+    rows.push([nombre, isMoneda ? c(va) : va, isMoneda ? c(vb) : vb, isMoneda ? c(diff) : null, pct])
+  }
+
+  addKPI('Ingresos netos', ea.ingresos.total, eb.ingresos.total)
+  addKPI('Utilidad bruta', ea.utilidadBruta, eb.utilidadBruta)
+  addKPI('EBITDA', ea.ebitda, eb.ebitda)
+  addKPI('Utilidad neta', ea.utilidadNeta, eb.utilidadNeta)
+  addKPI('Margen bruto', ea.margenBruto, eb.margenBruto, false)
+  addKPI('Margen neto', ea.margenNeto, eb.margenNeto, false)
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 12 }]
+  return ws
+}
+
+function triggerDownload(wb: XLSX.WorkBook, filename: string): void {
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export function exportarComparativo(
+  ruc: string,
+  periodosA: string[],
+  periodosB: string[],
+  a: DashboardData,
+  b: DashboardData,
+): void {
+  const sortedA = [...periodosA].sort()
+  const sortedB = [...periodosB].sort()
+  const yearA  = sortedA[0]?.substring(0, 4) ?? ''
+  const yearB  = sortedB[0]?.substring(0, 4) ?? ''
+  const labelA = sortedA.length === 1 ? sortedA[0]
+    : sortedA.length <= 12 && new Set(sortedA.map(p => p.substring(0, 4))).size === 1 ? yearA
+    : `${sortedA[0]}-${sortedA[sortedA.length - 1]}`
+  const labelB = sortedB.length === 1 ? sortedB[0]
+    : sortedB.length <= 12 && new Set(sortedB.map(p => p.substring(0, 4))).size === 1 ? yearB
+    : `${sortedB[0]}-${sortedB[sortedB.length - 1]}`
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, buildComparativoKPISheet(labelA, labelB, a, b), 'KPIs')
+  XLSX.utils.book_append_sheet(wb, buildComparativoERISheet(labelA, labelB, a, b), 'ERI Comparativo')
+  XLSX.utils.book_append_sheet(wb, buildComparativoRatiosSheet(labelA, labelB, a, b), 'Ratios')
+
+  const filename = `${ruc}_Comparativo_${labelA}_vs_${labelB}.xlsx`
+  triggerDownload(wb, filename)
 }
 
 export function exportarExcel(

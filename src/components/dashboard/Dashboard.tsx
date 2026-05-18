@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { TrendingUp, DollarSign, Percent, Activity, Download, BookOpen, ShieldAlert } from 'lucide-react'
+import { TrendingUp, DollarSign, Percent, Activity, Download, BookOpen, ShieldAlert, GitCompare } from 'lucide-react'
 import { getDashboardData } from '@/app/actions'
 import type { DashboardData } from '@/app/actions'
 import { fmtMoneda, fmtPct, fmtVeces, fmtPeriodo } from '@/lib/format'
@@ -106,6 +106,13 @@ export default function Dashboard({
                 onRucChange={handleRucChange}
                 onPeriodsChange={handlePeriodsChange}
               />
+              <Link
+                href="/comparativo"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+              >
+                <GitCompare className="h-3.5 w-3.5" />
+                Comparativo
+              </Link>
               <Link
                 href="/anomalies"
                 className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
@@ -215,7 +222,17 @@ export default function Dashboard({
         {/* ── Tabla de ratios ── */}
         <section>
           <h2 className="mb-3 text-sm font-semibold text-gray-700">Ratios financieros — Sector comercial</h2>
-          <RatiosTable metricas={metricas} />
+          <RatiosTable
+            metricas={metricas}
+            esf={esf}
+            eri={eri}
+            diasPeriodo={
+              selectedPeriods.length === 1 ? 30
+              : selectedPeriods.length <= 3  ? 90
+              : selectedPeriods.length <= 6  ? 180
+              : 365
+            }
+          />
         </section>
       </main>
     </div>
