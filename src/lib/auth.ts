@@ -12,6 +12,11 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
       tenantId: process.env.AZURE_AD_TENANT_ID!,
       allowDangerousEmailAccountLinking: true,
+      authorization: {
+        params: {
+          scope: 'openid profile email offline_access Files.Read User.Read',
+        },
+      },
     }),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -23,9 +28,15 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id
+      }
+      // Guardar access token de Microsoft para acceder a OneDrive
+      if (account?.provider === 'azure-ad') {
+        token.msAccessToken  = account.access_token
+        token.msRefreshToken = account.refresh_token
+        token.msTokenExpiry  = account.expires_at
       }
       return token
     },
@@ -33,11 +44,12 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id as string
       }
+      session.msAccessToken = token.msAccessToken as string | undefined
       return session
     },
   },
   pages: {
     signIn: '/auth/signin',
-    error: '/auth/error',
+    error:  '/auth/error',
   },
 }
