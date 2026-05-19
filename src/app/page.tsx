@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { getAvailableRucs, getAllPeriods, getDashboardData, getCompanyConfig } from './actions'
 import Dashboard from '@/components/dashboard/Dashboard'
 import Link from 'next/link'
