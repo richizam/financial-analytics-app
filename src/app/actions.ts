@@ -276,3 +276,23 @@ export async function getCompanyConfig(ruc: string): Promise<CompanyConfig | nul
   if (!content) return null
   try { return JSON.parse(content) as CompanyConfig } catch { return null }
 }
+
+// ─── Notas a los Estados Financieros ─────────────────────────────────────────
+
+export interface NotasData {
+  esf: ESF
+  eri: ERI
+  config: CompanyConfig | null
+  ruc: string
+  periodos: string[]
+}
+
+export async function getNotasData(ruc: string, periodos: string[]): Promise<NotasData | null> {
+  if (periodos.length === 0) return null
+  const [dashboard, config] = await Promise.all([
+    getDashboardData(ruc, periodos),
+    getCompanyConfig(ruc),
+  ])
+  if (!dashboard) return null
+  return { esf: dashboard.esf, eri: dashboard.eri, config, ruc, periodos }
+}

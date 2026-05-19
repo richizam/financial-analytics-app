@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect } from 'react'
 import Link from 'next/link'
-import { TrendingUp, DollarSign, Percent, Activity, Download, BookOpen, ShieldAlert, GitCompare, Plus, ArrowLeft, FolderOpen } from 'lucide-react'
+import { TrendingUp, DollarSign, Percent, Activity, Download, BookOpen, ShieldAlert, GitCompare, Plus, ArrowLeft, FolderOpen, FileText } from 'lucide-react'
 import { getDashboardData } from '@/app/actions'
 import type { DashboardData } from '@/app/actions'
 import { fmtMoneda, fmtPct, fmtVeces, fmtPeriodo } from '@/lib/format'
@@ -205,6 +205,13 @@ export default function Dashboard({
               >
                 <BookOpen className="h-3.5 w-3.5" />
                 Libro Mayor
+              </Link>
+              <Link
+                href="/notas"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Notas NIIF
               </Link>
               <button
                 onClick={() => data && exportarExcel(selectedRuc, selectedPeriods, data.eri, data.esf, data.metricas)}
