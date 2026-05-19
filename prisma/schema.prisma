@@ -3,11 +3,10 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
-
-// ─── Enums: Autenticación ──────────────────────────────────────────────────────
 
 enum UserRole {
   admin
@@ -15,8 +14,6 @@ enum UserRole {
   auditor
   gerente
 }
-
-// ─── Enums: Empresa ────────────────────────────────────────────────────────────
 
 enum TipoContribuyente {
   sociedad
@@ -81,8 +78,6 @@ enum FuenteDatos {
   ambos
 }
 
-// ─── NextAuth: Account ─────────────────────────────────────────────────────────
-
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -102,8 +97,6 @@ model Account {
   @@unique([provider, providerAccountId])
 }
 
-// ─── NextAuth: Session ─────────────────────────────────────────────────────────
-
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
@@ -113,8 +106,6 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// ─── NextAuth: VerificationToken ──────────────────────────────────────────────
-
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -122,8 +113,6 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
-
-// ─── Modelo: User ──────────────────────────────────────────────────────────────
 
 model User {
   id            String    @id @default(cuid())
@@ -141,8 +130,6 @@ model User {
   companies UserCompany[]
   auditLogs AuditLog[]
 }
-
-// ─── Modelo: Company ───────────────────────────────────────────────────────────
 
 model Company {
   id                           String             @id @default(cuid())
@@ -189,8 +176,6 @@ model Company {
   users UserCompany[]
 }
 
-// ─── Modelo: UserCompany ───────────────────────────────────────────────────────
-
 model UserCompany {
   id        String   @id @default(cuid())
   userId    String
@@ -204,8 +189,6 @@ model UserCompany {
 
   @@unique([userId, companyId])
 }
-
-// ─── Modelo: AuditLog ─────────────────────────────────────────────────────────
 
 model AuditLog {
   id        String   @id @default(cuid())
