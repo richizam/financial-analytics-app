@@ -508,24 +508,13 @@ export default function NotasView({
           </Link>
 
           <div className="flex items-center gap-2 flex-1 flex-wrap">
-            {/* Selector de RUC */}
-            <select
-              value={selectedRuc}
-              onChange={e => handleRucChange(e.target.value)}
-              className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {allRucs.map(ruc => (
-                <option key={ruc} value={ruc}>
-                  {companyNames[ruc] ?? ruc} — {ruc}
-                </option>
-              ))}
-            </select>
-
-            {/* Selector de período */}
             <PeriodSelector
-              allPeriods={periodsByRuc[selectedRuc] ?? []}
+              allRucs={allRucs}
+              periodsByRuc={periodsByRuc}
+              selectedRuc={selectedRuc}
               selectedPeriods={selectedPeriods}
-              onChange={handlePeriodsChange}
+              onRucChange={handleRucChange}
+              onPeriodsChange={handlePeriodsChange}
             />
           </div>
 
