@@ -2,12 +2,7 @@
 
 import fs from 'fs'
 import path from 'path'
-import {
-  listRucsFromStorage,
-  listPeriodsFromStorage,
-  readCsvFromStorage,
-  uploadCsvToStorage,
-} from '@/lib/storage'
+import { listRucsFromDb, listPeriodsFromDb, readCsvFromDb, upsertCsvToDb } from '@/lib/db-storage'
 import {
   listAvailablePeriods,
   parseMultiplePeriods,
@@ -33,64 +28,52 @@ import type { MetricsResult } from '@/lib/metrics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface CuentaOption {
-  codCuenta: string
-  nombreCuenta: string
-}
-
+export interface CuentaOption { codCuenta: string; nombreCuenta: string }
 export interface MayorEntry {
   fecha: string; asiento: string; tipo: string; descripcion: string
   debe: number; haber: number; saldo: number
 }
-
 export interface MayorData {
   codCuenta: string; nombreCuenta: string; saldoInicial: number
   entries: MayorEntry[]; totalDebe: number; totalHaber: number; saldoFinal: number
 }
-
 export interface MayorPageData {
   cuentas: CuentaOption[]; mayor: MayorData | null; selectedCuenta: string | null
 }
-
 export interface MonthBar {
   periodo: string; label: string
   ingresos: number; costoVentas: number; utilidadBruta: number; utilidadNeta: number
 }
-
 export interface DashboardData {
   esf: ESF; eri: ERI; metricas: MetricsResult
   monthlyChart: MonthBar[]; periodosLeidos: string[]
 }
 
-// ─── Helper: determinar si usar storage ──────────────────────────────────────
+// ─── Helper ───────────────────────────────────────────────────────────────────
 
-function useStorage(): boolean {
-  return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+/** En Vercel siempre usa DB; en local puede usar filesystem si no hay datos en DB */
+async function useDb(): Promise<boolean> {
+  if (process.env.VERCEL) return true
+  try {
+    const rucs = await listRucsFromDb()
+    return rucs.length > 0
+  } catch { return false }
 }
 
 // ─── Server Actions ───────────────────────────────────────────────────────────
 
 export async function getAvailableRucs(): Promise<string[]> {
-  if (useStorage()) {
-    try {
-      const rucs = await listRucsFromStorage()
-      if (rucs.length > 0 || process.env.VERCEL) return rucs
-    } catch (e) {
-      console.warn('[actions] Storage listRucs falló:', e)
-    }
-  }
+  if (await useDb()) return listRucsFromDb()
   const dir = path.join(process.cwd(), 'data', 'empresas')
   if (!fs.existsSync(dir)) return []
   return fs.readdirSync(dir).filter(f => fs.statSync(path.join(dir, f)).isDirectory()).sort()
 }
 
 export async function getAllPeriods(rucs: string[]): Promise<Record<string, string[]>> {
+  const db = await useDb()
   const result: Record<string, string[]> = {}
   for (const ruc of rucs) {
-    if (useStorage()) {
-      try { result[ruc] = await listPeriodsFromStorage(ruc); continue } catch { /* fallback */ }
-    }
-    result[ruc] = listAvailablePeriods(ruc)
+    result[ruc] = db ? await listPeriodsFromDb(ruc) : listAvailablePeriods(ruc)
   }
   return result
 }
@@ -100,14 +83,14 @@ export async function getDashboardData(ruc: string, periodos: string[]): Promise
   const sorted = [...periodos].sort()
   const year   = yearFromPeriod(sorted[0])
 
-  if (useStorage()) {
+  if (await useDb()) {
     const contents: { periodo: string; content: string }[] = []
     for (const p of sorted) {
-      const csv = await readCsvFromStorage(ruc, `${p}.csv`)
+      const csv = await readCsvFromDb(ruc, `${p}.csv`)
       if (csv) contents.push({ periodo: p, content: csv })
     }
     const { entries: allEntries, periodosLeidos } = parseMultiplePeriodsContent(contents)
-    const openingCsv = await readCsvFromStorage(ruc, `saldos_iniciales_${year}.csv`)
+    const openingCsv = await readCsvFromDb(ruc, `saldos_iniciales_${year}.csv`)
     const opening    = openingCsv ? parseOpeningBalancesContent(openingCsv, year) : new Map()
     const saldosESF  = calcularSaldosConAperturaContent(opening, allEntries)
     const saldosERI  = calcularSaldosPorCuentaContent(allEntries)
@@ -129,8 +112,7 @@ export async function getDashboardData(ruc: string, periodos: string[]): Promise
   const { entries: allEntries, periodosLeidos } = parseMultiplePeriods(ruc, sorted)
   const saldosESF = calcularSaldosConApertura(ruc, year, allEntries)
   const saldosERI = calcularSaldosPorCuenta(allEntries)
-  const esf = generarESF(saldosESF)
-  const eri = generarERI(saldosERI)
+  const esf = generarESF(saldosESF); const eri = generarERI(saldosERI)
   const dias = sorted.length === 1 ? 30 : sorted.length <= 3 ? 90 : sorted.length <= 6 ? 180 : 365
   const metricas = calcularMetricas(esf, eri, 'comercial', dias)
   const monthlyChart: MonthBar[] = sorted.map(periodo => {
@@ -147,16 +129,15 @@ export async function getMayorPageData(ruc: string, periodos: string[], codCuent
   const sorted = [...periodos].sort()
   const year   = yearFromPeriod(sorted[0])
 
-  type Entry   = import('@/lib/parser').JournalEntry
-  type SaldoM  = import('@/lib/parser').SaldoCuenta
-  let entries: Entry[]             = []
-  let opening: Map<string, SaldoM> = new Map()
+  type E = import('@/lib/parser').JournalEntry
+  type S = import('@/lib/parser').SaldoCuenta
+  let entries: E[] = []; let opening: Map<string, S> = new Map()
 
-  if (useStorage()) {
+  if (await useDb()) {
     const contents: { periodo: string; content: string }[] = []
-    for (const p of sorted) { const c = await readCsvFromStorage(ruc, `${p}.csv`); if (c) contents.push({ periodo: p, content: c }) }
+    for (const p of sorted) { const c = await readCsvFromDb(ruc, `${p}.csv`); if (c) contents.push({ periodo: p, content: c }) }
     entries = parseMultiplePeriodsContent(contents).entries
-    const oc = await readCsvFromStorage(ruc, `saldos_iniciales_${year}.csv`)
+    const oc = await readCsvFromDb(ruc, `saldos_iniciales_${year}.csv`)
     opening  = oc ? parseOpeningBalancesContent(oc, year) : new Map()
   } else {
     entries = parseMultiplePeriods(ruc, sorted).entries
@@ -185,7 +166,6 @@ export async function getMayorPageData(ruc: string, periodos: string[], codCuent
     return { fecha: e.fecha, asiento: e.asiento, tipo: e.tipo, descripcion: e.descripcion,
       debe: e.debe, haber: e.haber, saldo: saldoAcumulado }
   })
-
   return { cuentas, mayor: { codCuenta: selected, nombreCuenta, saldoInicial,
     entries: mayorEntries, totalDebe, totalHaber, saldoFinal: saldoAcumulado }, selectedCuenta: selected }
 }
@@ -195,16 +175,15 @@ export async function getMayorCompletoData(ruc: string, periodos: string[]): Pro
   const sorted = [...periodos].sort()
   const year   = yearFromPeriod(sorted[0])
 
-  type Entry   = import('@/lib/parser').JournalEntry
-  type SaldoM  = import('@/lib/parser').SaldoCuenta
-  let entries: Entry[]             = []
-  let opening: Map<string, SaldoM> = new Map()
+  type E = import('@/lib/parser').JournalEntry
+  type S = import('@/lib/parser').SaldoCuenta
+  let entries: E[] = []; let opening: Map<string, S> = new Map()
 
-  if (useStorage()) {
+  if (await useDb()) {
     const contents: { periodo: string; content: string }[] = []
-    for (const p of sorted) { const c = await readCsvFromStorage(ruc, `${p}.csv`); if (c) contents.push({ periodo: p, content: c }) }
+    for (const p of sorted) { const c = await readCsvFromDb(ruc, `${p}.csv`); if (c) contents.push({ periodo: p, content: c }) }
     entries = parseMultiplePeriodsContent(contents).entries
-    const oc = await readCsvFromStorage(ruc, `saldos_iniciales_${year}.csv`)
+    const oc = await readCsvFromDb(ruc, `saldos_iniciales_${year}.csv`)
     opening  = oc ? parseOpeningBalancesContent(oc, year) : new Map()
   } else {
     entries = parseMultiplePeriods(ruc, sorted).entries
@@ -236,10 +215,9 @@ export async function getAnomaliesData(ruc: string, periodos: string[]): Promise
   if (periodos.length === 0) return null
   const sorted = [...periodos].sort()
   let entries: import('@/lib/parser').JournalEntry[] = []
-
-  if (useStorage()) {
+  if (await useDb()) {
     const contents: { periodo: string; content: string }[] = []
-    for (const p of sorted) { const c = await readCsvFromStorage(ruc, `${p}.csv`); if (c) contents.push({ periodo: p, content: c }) }
+    for (const p of sorted) { const c = await readCsvFromDb(ruc, `${p}.csv`); if (c) contents.push({ periodo: p, content: c }) }
     entries = parseMultiplePeriodsContent(contents).entries
   } else {
     entries = parseMultiplePeriods(ruc, sorted).entries
@@ -248,7 +226,6 @@ export async function getAnomaliesData(ruc: string, periodos: string[]): Promise
 }
 
 export interface ComparativoData { a: DashboardData; b: DashboardData }
-
 export async function getComparativoData(ruc: string, periodosA: string[], periodosB: string[]): Promise<ComparativoData | null> {
   if (periodosA.length === 0 || periodosB.length === 0) return null
   const [a, b] = await Promise.all([getDashboardData(ruc, periodosA), getDashboardData(ruc, periodosB)])
@@ -256,24 +233,28 @@ export async function getComparativoData(ruc: string, periodosA: string[], perio
   return { a, b }
 }
 
-// ─── Carga de archivos CSV ─────────────────────────────────────────────────
+// ─── Upload de archivos CSV ───────────────────────────────────────────────────
 
 export async function uploadCsvAction(formData: FormData): Promise<{ ok: boolean; error?: string; filename?: string }> {
-  const file = formData.get('file') as File | null
-  const ruc  = (formData.get('ruc') as string | null)?.trim()
+  try {
+    const file = formData.get('file') as File | null
+    const ruc  = (formData.get('ruc') as string | null)?.trim()
 
-  if (!file) return { ok: false, error: 'No se recibió ningún archivo' }
-  if (!ruc || !/^\d{13}$/.test(ruc)) return { ok: false, error: 'RUC inválido (debe tener 13 dígitos)' }
+    if (!file) return { ok: false, error: 'No se recibió ningún archivo' }
+    if (!ruc || !/^\d{13}$/.test(ruc)) return { ok: false, error: 'RUC inválido (debe tener 13 dígitos)' }
 
-  const name = file.name
-  if (!/^(\d{6}|saldos_iniciales_\d{4})\.csv$/i.test(name)) {
-    return { ok: false, error: 'El nombre debe ser YYYYMM.csv o saldos_iniciales_YYYY.csv' }
+    const name = file.name
+    if (!/^(\d{6}|saldos_iniciales_\d{4})\.csv$/i.test(name)) {
+      return { ok: false, error: 'Nombre inválido. Usa YYYYMM.csv o saldos_iniciales_YYYY.csv' }
+    }
+
+    const content = await file.text()
+    const result  = await upsertCsvToDb(ruc, name, content)
+    if (!result.ok) return { ok: false, error: result.error }
+    return { ok: true, filename: name }
+  } catch (e) {
+    return { ok: false, error: `Error inesperado: ${String(e)}` }
   }
-
-  const buffer = await file.arrayBuffer()
-  const result = await uploadCsvToStorage(ruc, name, buffer)
-  if (!result.ok) return { ok: false, error: result.error }
-  return { ok: true, filename: name }
 }
 
 // ─── Configuración de empresa ─────────────────────────────────────────────────
@@ -287,29 +268,11 @@ export interface CompanyConfig {
 }
 
 export async function saveCompanyConfig(config: CompanyConfig): Promise<{ ok: boolean; error?: string }> {
-  if (useStorage()) {
-    const json = JSON.stringify(config, null, 2)
-    const result = await uploadCsvToStorage(config.ruc, 'config.json', json)
-    return result
-  }
-  try {
-    const dir = path.join(process.cwd(), 'data', 'empresas', config.ruc)
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf8')
-    return { ok: true }
-  } catch (e) { return { ok: false, error: String(e) } }
+  return upsertCsvToDb(config.ruc, 'config.json', JSON.stringify(config, null, 2))
 }
 
 export async function getCompanyConfig(ruc: string): Promise<CompanyConfig | null> {
-  if (useStorage()) {
-    try {
-      const content = await readCsvFromStorage(ruc, 'config.json')
-      if (!content) return null
-      return JSON.parse(content) as CompanyConfig
-    } catch { return null }
-  }
-  const p = path.join(process.cwd(), 'data', 'empresas', ruc, 'config.json')
-  if (!fs.existsSync(p)) return null
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')) as CompanyConfig }
-  catch { return null }
+  const content = await readCsvFromDb(ruc, 'config.json')
+  if (!content) return null
+  try { return JSON.parse(content) as CompanyConfig } catch { return null }
 }

@@ -204,3 +204,15 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
 }
+
+model CsvFile {
+  id        String   @id @default(cuid())
+  ruc       String
+  filename  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ruc, filename])
+  @@index([ruc])
+}
