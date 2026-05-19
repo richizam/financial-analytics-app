@@ -23,21 +23,32 @@ export default function UploadClient() {
 
     const newResults: UploadResult[] = []
     for (const file of Array.from(files)) {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('ruc', ruc)
-      const res = await uploadCsvAction(fd)
-      newResults.push({ filename: file.name, ok: res.ok, error: res.error })
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('ruc', ruc)
+        const res = await uploadCsvAction(fd)
+        newResults.push({ filename: file.name, ok: res.ok, error: res.error })
+      } catch (err) {
+        newResults.push({ filename: file.name, ok: false, error: String(err) })
+      }
+      // Mostrar progreso en tiempo real
+      setResults([...newResults])
     }
-    setResults(newResults)
     setLoading(false)
-    if (newResults.every(r => r.ok)) { setFiles(null); if (inputRef.current) inputRef.current.value = '' }
+    if (newResults.every(r => r.ok)) {
+      setFiles(null)
+      if (inputRef.current) inputRef.current.value = ''
+    }
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault(); setDragOver(false)
     setFiles(e.dataTransfer.files)
   }
+
+  const completed = results.length
+  const total = files?.length ?? 0
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">
@@ -49,12 +60,11 @@ export default function UploadClient() {
         <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
           <h1 className="mb-1 text-lg font-semibold text-gray-900">Cargar archivos CSV</h1>
           <p className="mb-6 text-sm text-gray-500">
-            Sube los archivos de asientos contables por período (<code>YYYYMM.csv</code>) y
+            Sube los archivos de asientos por período (<code>YYYYMM.csv</code>) y
             opcionalmente los saldos iniciales (<code>saldos_iniciales_YYYY.csv</code>).
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* RUC */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">RUC de la empresa</label>
               <input
@@ -67,10 +77,8 @@ export default function UploadClient() {
                 pattern="\d{13}"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <p className="mt-1 text-xs text-gray-400">13 dígitos numéricos</p>
             </div>
 
-            {/* Drop zone */}
             <div
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
@@ -91,41 +99,26 @@ export default function UploadClient() {
                   <p className="mt-1 text-xs text-gray-400">o haz clic para seleccionarlos</p>
                 </>
               )}
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".csv"
-                multiple
-                className="hidden"
-                onChange={e => setFiles(e.target.files)}
-              />
+              <input ref={inputRef} type="file" accept=".csv" multiple className="hidden"
+                onChange={e => setFiles(e.target.files)} />
             </div>
-
-            {/* Archivos seleccionados */}
-            {files && files.length > 0 && (
-              <ul className="space-y-1 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                {Array.from(files).map((f, i) => (
-                  <li key={i} className="flex items-center gap-2 text-xs text-gray-600">
-                    <span className="text-gray-400">📄</span> {f.name}
-                    <span className="ml-auto text-gray-400">{(f.size / 1024).toFixed(1)} KB</span>
-                  </li>
-                ))}
-              </ul>
-            )}
 
             <button
               type="submit"
               disabled={loading || !files || files.length === 0 || ruc.length !== 13}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? <><Loader2 size={16} className="animate-spin" /> Subiendo...</> : <><Upload size={16} /> Subir archivos</>}
+              {loading
+                ? <><Loader2 size={16} className="animate-spin" /> Subiendo {completed}/{total}...</>
+                : <><Upload size={16} /> Subir archivos</>}
             </button>
           </form>
 
-          {/* Resultados */}
           {results.length > 0 && (
             <div className="mt-6 space-y-2">
-              <p className="text-sm font-medium text-gray-700">Resultado:</p>
+              <p className="text-sm font-medium text-gray-700">
+                Resultado ({results.filter(r => r.ok).length}/{results.length} exitosos):
+              </p>
               {results.map((r, i) => (
                 <div key={i} className={`flex items-start gap-2 rounded-lg p-3 text-sm ${
                   r.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
@@ -139,7 +132,7 @@ export default function UploadClient() {
                   </div>
                 </div>
               ))}
-              {results.every(r => r.ok) && (
+              {!loading && results.every(r => r.ok) && (
                 <Link href="/" className="mt-2 block text-center text-sm text-blue-600 hover:underline">
                   Ver en el dashboard →
                 </Link>
@@ -147,17 +140,15 @@ export default function UploadClient() {
             </div>
           )}
 
-          {/* Formato esperado */}
           <details className="mt-6">
             <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600">
               Ver formato esperado del CSV
             </summary>
             <div className="mt-2 overflow-x-auto rounded border border-gray-100 bg-gray-50 p-3">
-              <p className="mb-1 text-xs font-medium text-gray-600">Columnas (separadas por coma):</p>
               <code className="block whitespace-pre text-xs text-gray-700">
 {`fecha,asiento,tipo,codCuenta,nombreCuenta,descripcion,debe,haber,centroCosto
 2025-01-05,AJ-202501-001,VT,4.1.1.01,Ventas,Factura 001,0.00,1500.00,VENTAS
-2025-01-05,AJ-202501-001,VT,1.1.3.01,Cuentas por cobrar,Factura 001,1500.00,0.00,VENTAS`}
+2025-01-05,AJ-202501-001,VT,1.1.3.01,Cuentas x cobrar,Factura 001,1500.00,0.00,VENTAS`}
               </code>
             </div>
           </details>
