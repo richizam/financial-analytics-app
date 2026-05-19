@@ -1,12 +1,37 @@
 'use client'
 
 import { signIn } from 'next-auth/react'
-import { useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
 
 function SignInContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const callbackUrl = searchParams.get('callbackUrl') ?? '/'
+
+  const [showDemo, setShowDemo]     = useState(false)
+  const [username, setUsername]     = useState('')
+  const [password, setPassword]     = useState('')
+  const [error, setError]           = useState('')
+  const [loading, setLoading]       = useState(false)
+
+  async function handleDemoLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    const result = await signIn('credentials', {
+      username,
+      password,
+      redirect: false,
+      callbackUrl,
+    })
+    setLoading(false)
+    if (result?.ok) {
+      router.push(callbackUrl)
+    } else {
+      setError('Usuario o contraseña incorrectos')
+    }
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -45,6 +70,62 @@ function SignInContent() {
             </svg>
             Continuar con Google
           </button>
+
+          {/* Separador */}
+          <div className="relative my-2">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200" />
+            </div>
+            <div className="relative flex justify-center text-xs text-gray-400">
+              <span className="bg-white px-2">o</span>
+            </div>
+          </div>
+
+          {/* Acceso demo */}
+          {!showDemo ? (
+            <button
+              onClick={() => setShowDemo(true)}
+              className="w-full rounded-lg border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 transition hover:border-gray-400 hover:text-gray-700"
+            >
+              Acceso con usuario y contraseña
+            </button>
+          ) : (
+            <form onSubmit={handleDemoLogin} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Usuario"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                required
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              <input
+                type="password"
+                placeholder="Contraseña"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              {error && (
+                <p className="text-xs text-red-600">{error}</p>
+              )}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+              >
+                {loading ? 'Verificando...' : 'Ingresar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowDemo(false); setError('') }}
+                className="w-full text-xs text-gray-400 hover:text-gray-600"
+              >
+                Cancelar
+              </button>
+            </form>
+          )}
         </div>
 
         <p className="mt-8 text-center text-xs text-gray-400">

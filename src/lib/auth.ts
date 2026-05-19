@@ -1,6 +1,7 @@
 import { NextAuthOptions } from 'next-auth'
 import AzureADProvider from 'next-auth/providers/azure-ad'
 import GoogleProvider from 'next-auth/providers/google'
+import CredentialsProvider from 'next-auth/providers/credentials'
 import { PrismaAdapter } from '@next-auth/prisma-adapter'
 import { prisma } from '@/lib/prisma'
 
@@ -22,6 +23,32 @@ export const authOptions: NextAuthOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       allowDangerousEmailAccountLinking: true,
+    }),
+    CredentialsProvider({
+      id: 'credentials',
+      name: 'Demo',
+      credentials: {
+        username: { label: 'Usuario', type: 'text', placeholder: 'demo' },
+        password: { label: 'Contraseña', type: 'password' },
+      },
+      async authorize(credentials) {
+        const demoUser = process.env.DEMO_USER ?? 'demo'
+        const demoPassword = process.env.DEMO_PASSWORD
+
+        if (!demoPassword) return null
+
+        if (
+          credentials?.username === demoUser &&
+          credentials?.password === demoPassword
+        ) {
+          return {
+            id: 'demo-user',
+            name: 'Demo User',
+            email: `${demoUser}@demo.local`,
+          }
+        }
+        return null
+      },
     }),
   ],
   session: {
