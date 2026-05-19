@@ -509,6 +509,7 @@ export default function NotasView({
 
           <div className="flex items-center gap-2 flex-1 flex-wrap">
             <PeriodSelector
+              ruc={selectedRuc}
               allRucs={allRucs}
               periodsByRuc={periodsByRuc}
               selectedRuc={selectedRuc}
