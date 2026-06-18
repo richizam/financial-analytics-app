@@ -26,3 +26,6 @@ __pycache__/
 *.pem
 npm-debug.log*
 tsconfig.tsbuildinfo
+
+# local design notes (kept out of the repo)
+grok_ai_integration_architecture.md

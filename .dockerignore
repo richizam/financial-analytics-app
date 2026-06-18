@@ -11,5 +11,7 @@ data_asientos.zip
 C:\tmp
 npm-debug.log*
 tsconfig.tsbuildinfo
+.env
+.env.docker
 .env.local
 .env*.local
