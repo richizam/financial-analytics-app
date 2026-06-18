@@ -4,24 +4,21 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:frontend": "next dev",
+    "dev:backend": "python -m uvicorn backend.app.main:app --reload --port 8000",
     "build": "next build",
     "start": "next start",
-    "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts",
-    "test": "jest",
-    "postinstall": "prisma generate"
+    "backend:test": "python -m pytest backend/tests -q",
+    "test": "npm run backend:test"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
     "lucide-react": "^1.16.0",
     "next": "14.2.35",
     "next-auth": "^4.24.11",
-    "prisma": "^7.8.0",
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^3.8.1",
-    "xlsx": "^0.18.5",
-    "@next-auth/prisma-adapter": "^1.0.7"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -31,7 +28,6 @@
     "postcss": "^8",
     "tailwindcss": "^3.4",
     "tsx": "^4.22.1",
-    "typescript": "^5",
-    "prisma": "^5.22.0"
+    "typescript": "^5"
   }
 }

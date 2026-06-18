@@ -1,39 +1,30 @@
 # Financial Analytics App — Contexto del proyecto
 
 ## Stack tecnológico
-- **Frontend + Backend:** Next.js 14+ (App Router) con TypeScript
-- **Base de datos:** PostgreSQL con Prisma ORM
+- **Frontend:** Next.js 14+ (App Router) con TypeScript
+- **Backend:** Python FastAPI en `backend/`, consumido por Server Actions
+- **Base de datos:** PostgreSQL via Python/psycopg, con fallback local a `data/empresas`
 - **Autenticación:** NextAuth.js con roles
 - **UI / Gráficos:** Tailwind CSS + Recharts + Tremor
 - **Excel:** biblioteca `xlsx` (SheetJS)
 - **Power BI:** Power BI REST API v2.0
-- **Deploy:** Vercel (frontend) + Railway/Supabase (DB)
+- **Deploy:** Vercel (frontend) + servicio Python privado + Railway/Supabase (DB)
 
 ## Estructura de carpetas
 ```
+backend/
+├── app/
+│   ├── api/              # rutas HTTP y dependencias FastAPI
+│   ├── core/             # settings y seguridad backend-to-backend
+│   ├── domain/financial/ # reglas contables y servicio financiero
+│   ├── schemas/          # request schemas Pydantic
+│   └── storage/          # adaptadores file/PostgreSQL
+└── tests/
+
 src/
-├── app/                  # Next.js App Router
-│   ├── (auth)/           # login, registro
-│   ├── (dashboard)/      # vistas protegidas
-│   │   ├── overview/     # resumen ejecutivo
-│   │   ├── reports/      # informes contables
-│   │   ├── anomalies/    # detección de anomalías
-│   │   └── admin/        # gestión de usuarios
-│   └── api/              # API routes
-│       ├── auth/
-│       ├── metrics/
-│       ├── connectors/
-│       └── reports/
-├── components/
-│   ├── charts/           # componentes de gráficos
-│   ├── tables/           # tablas financieras
-│   └── ui/               # componentes base
-├── lib/
-│   ├── prisma.ts
-│   ├── powerbi.ts
-│   └── excel.ts
-└── types/
-    └── financial.ts      # tipos TypeScript para datos financieros
+├── app/                  # Next.js App Router + Server Actions proxy a Python
+├── components/           # UI, charts, tables, dashboards
+└── lib/                  # tipos frontend, formato, Excel, auth, proxy backend
 ```
 
 ## Convenciones obligatorias
@@ -75,9 +66,9 @@ src/
 
 | Componente | Ruta | Estado | Notas |
 |---|---|---|---|
-| Parser CSV | src/lib/parser.ts | ESTABLE | Lee YYYYMM.csv y saldos_iniciales_YYYY.csv; cierreAnual(); montos en centavos |
-| Estados financieros | src/lib/statements.ts | ESTABLE | generarESF(), generarERI(); cascade PT 15% → IR 25%; clasificarCuenta() |
-| Métricas y ratios | src/lib/metrics.ts | ESTABLE | calcularMetricas(); semáforos por sector; safeDiv() para div/0 |
+| Parser CSV | backend/app/domain/financial/accounting.py | ESTABLE | Lee YYYYMM.csv y saldos_iniciales_YYYY.csv; montos en centavos |
+| Estados financieros | backend/app/domain/financial/accounting.py | ESTABLE | generar_esf(), generar_eri(); cascade PT 15% → IR 25%; clasificar_cuenta() |
+| Métricas y ratios | backend/app/domain/financial/accounting.py | ESTABLE | calcular_metricas(); semáforos por sector; safe div para div/0 |
 | Formateo | src/lib/format.ts | ESTABLE | fmtMoneda, fmtPct, fmtVeces, fmtDias, fmtPeriodo, fmtCompacto |
 
 ## Archivos de datos — NUNCA modificar automáticamente
@@ -90,21 +81,22 @@ Si los datos parecen incorrectos, mostrar advertencia en UI pero nunca corregir 
 
 | Archivo | Estado | Razón |
 |---|---|---|
-| src/lib/statements.ts | ESTABLE | ESF y ERI calculan correctamente |
-| src/lib/metrics.ts | ESTABLE | Ratios y semáforos funcionan |
+| backend/app/domain/financial/accounting.py | ESTABLE | Parser, ESF/ERI, métricas y anomalías |
+| src/lib/statements.ts | ESTABLE | Contratos TypeScript ESF/ERI consumidos por la UI |
+| src/lib/metrics.ts | ESTABLE | Contratos TypeScript de ratios consumidos por la UI |
 | src/app/page.tsx | ESTABLE | Dashboard y visualizaciones OK |
 | src/components/statements/ERIView.tsx | ESTABLE | Badges estimado funcionan |
 
 ## Regla general
 Antes de modificar cualquier archivo, leer CLAUDE.md.
 Si el archivo está marcado ESTABLE, solo tocarlo si el usuario lo autoriza explícitamente en el prompt.
-Si el bug está en parser.ts, corregir SOLO parser.ts.
+Si el bug está en cálculo financiero, corregir primero `backend/app/domain/financial/accounting.py` y mantener los contratos TypeScript sincronizados.
 
 ## Antipatrones — nunca hacer esto
 - No usar `useEffect` para fetch de datos — usar React Server Components o SWR
 - No hardcodear credenciales — siempre desde `.env.local`
 - No mezclar lógica de negocio en componentes UI
-- No redondear montos con `Math.round` — usar función `roundFinancial()` de `/lib/math.ts`
+- No redondear montos con floats — los montos van en **centavos (integer)** y el redondeo financiero se centraliza en `to_cents()` (Decimal/ROUND_HALF_UP) en `backend/app/domain/financial/accounting.py`
 - No modificar componentes marcados como ESTABLE sin aprobación explícita
 
 ## Regla de builds
@@ -114,12 +106,12 @@ Para verificar TypeScript usar solo `npx tsc --noEmit` — no afecta el servidor
 
 ## Comandos útiles del proyecto
 ```bash
-npm run dev          # desarrollo (Tailwind JIT activo)
+npm run dev          # frontend Next.js (Tailwind JIT activo)
+npm run dev:backend  # backend FastAPI en http://127.0.0.1:8000
 npx tsc --noEmit     # verificar tipos sin tocar el servidor
+python -m pytest backend/tests -q  # pruebas backend
 npm run build        # producción — solo cuando el dev server está DETENIDO
-npm run db:migrate   # migraciones Prisma
-npm run db:seed      # datos de prueba
-npm run test         # Jest
+npm run test         # pruebas backend (pytest)
 ```
 
 ## Skills activas

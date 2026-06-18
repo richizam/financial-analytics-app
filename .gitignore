@@ -11,6 +11,13 @@ out/
 
 # data empresas (solo el contador modifica estos archivos)
 data/
+data_asientos.zip
+
+# Python backend
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
 
 # misc
 .DS_Store
