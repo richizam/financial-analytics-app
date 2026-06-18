@@ -133,7 +133,7 @@ export default function UploadClient() {
             >
               {mappingLoading
                 ? <><Loader2 size={16} className="animate-spin" /> Analizando formato...</>
-                : <><Sparkles size={16} /> Sugerir mapeo con Grok</>}
+                : <><Sparkles size={16} /> Sugerir mapeo con AI</>}
             </button>
 
             {mapping && (
@@ -142,7 +142,7 @@ export default function UploadClient() {
                   <div>
                     <p className="text-sm font-semibold text-blue-950">Mapeo sugerido</p>
                     <p className="text-xs text-blue-700">
-                      {mapping.provider === 'xai' ? 'Grok reviso' : 'Heuristica reviso'} columnas y ejemplos enmascarados.
+                      {mapping.provider === 'xai' ? 'AI reviso' : 'Heuristica reviso'} columnas y ejemplos enmascarados.
                     </p>
                   </div>
                   <span className="rounded-full bg-white px-2 py-1 text-xs font-medium text-blue-700">

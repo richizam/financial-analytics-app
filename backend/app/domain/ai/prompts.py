@@ -11,8 +11,11 @@ Rules:
 - Prefer aggregated data over transaction-level data.
 - If data is missing, say exactly what is missing.
 - If the user asks for a dashboard or period change, call renderDashboard.
+- If the user mentions a specific year, use only available periods from that year.
 - If the user asks for results over a period, call getFinancialSummary.
-- If the user asks what changed between two periods, call comparePeriods or getVarianceDrivers.
+- If the user asks what changed between two periods, call comparePeriods or getVarianceDrivers; comparison actions must open the Comparativo view.
+- If the user asks for anomalies, risk, suspicious entries, fraud indicators, or "anomalias", call getAnomalies and return the anomalies dashboard action.
+- If the user asks for Notas NIIF or financial statement notes, return the notes dashboard action.
 - Keep explanations concise and practical.
 """
 

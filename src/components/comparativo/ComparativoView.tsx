@@ -4,11 +4,13 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Download, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { getComparativoData } from '@/app/actions'
-import type { ComparativoData, DashboardData } from '@/app/actions'
+import type { AiUiAction, ComparativoData, DashboardData } from '@/app/actions'
 import type { Ratio } from '@/lib/metrics'
 import { fmtMoneda, fmtPct, fmtVeces, fmtDias, fmtPeriodo } from '@/lib/format'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 import { exportarComparativo } from '@/lib/excel-export'
+import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
+import { buildPeriodHref, previousComparablePeriods } from '@/lib/period-selection'
 
 interface ComparativoViewProps {
   allRucs: string[]
@@ -34,29 +36,66 @@ function pctDiffLabel(a: number, b: number): string {
 }
 
 type Direction = 'up' | 'down' | 'neutral'
+type DirectionPreference = 'up' | 'down' | 'neutral'
 
 function varDirection(a: number, b: number): Direction {
   const diff = b - a
-  if (Math.abs(diff) < 1) return 'neutral'
+  const tolerance = Math.max(Math.abs(a), Math.abs(b), 1) * 1e-9
+  if (Math.abs(diff) <= tolerance) return 'neutral'
   return diff > 0 ? 'up' : 'down'
 }
 
-// higher-is-better ratios
-const HIGH_IS_BETTER = new Set([
-  'margenBruto', 'margenNeto', 'margenEbitda', 'roe', 'roa',
-  'razonCorriente', 'pruebaAcida', 'coberturaIntereses', 'capitalTrabajo',
+const UP_IS_GOOD = new Set([
+  'ingresos',
+  'utilBruta',
+  'margenBruto',
+  'ebit',
+  'ebitda',
+  'margenEbitda',
+  'utilAntesPT',
+  'utilNeta',
+  'margenNeto',
+  'roe',
+  'roa',
+  'razonCorriente',
+  'pruebaAcida',
+  'capitalTrabajo',
+  'coberturaIntereses',
 ])
+
+const DOWN_IS_GOOD = new Set([
+  'costo',
+  'gastos',
+  'pt',
+  'ir',
+  'razonEndeudamiento',
+  'apalancamiento',
+  'diasCobro',
+  'diasInventario',
+  'cce',
+])
+
+function preferredDirection(clave: string): DirectionPreference {
+  if (UP_IS_GOOD.has(clave)) return 'up'
+  if (DOWN_IS_GOOD.has(clave)) return 'down'
+  return 'neutral'
+}
 
 function varColor(clave: string, dir: Direction): string {
   if (dir === 'neutral') return 'text-gray-500'
-  const good = HIGH_IS_BETTER.has(clave) ? 'up' : 'down'
+  const good = preferredDirection(clave)
+  if (good === 'neutral') return 'text-gray-500'
   return dir === good ? 'text-green-600' : 'text-red-600'
 }
 
 function VarArrow({ dir, clave }: { dir: Direction; clave: string }) {
   if (dir === 'neutral') return <Minus className="h-3.5 w-3.5 text-gray-400" />
-  const good = HIGH_IS_BETTER.has(clave) ? 'up' : 'down'
-  const color = dir === good ? 'text-green-600' : 'text-red-600'
+  const good = preferredDirection(clave)
+  const color = good === 'neutral'
+    ? 'text-gray-500'
+    : dir === good
+    ? 'text-green-600'
+    : 'text-red-600'
   return dir === 'up'
     ? <TrendingUp className={`h-3.5 w-3.5 ${color}`} />
     : <TrendingDown className={`h-3.5 w-3.5 ${color}`} />
@@ -252,10 +291,11 @@ function RatiosCompare({ a, b }: { a: DashboardData; b: DashboardData }) {
               </tr>
               {ratiosA.map((rA, i) => {
                 const rB = ratiosB[i]
+                const hasBothValues = rA.valor !== null && rB?.valor !== null && rB?.valor !== undefined
                 const valA = rA.valor ?? 0
                 const valB = rB?.valor ?? 0
-                const dir = varDirection(valA, valB)
-                const pct = pctDiffLabel(valA, valB)
+                const dir = hasBothValues ? varDirection(valA, valB) : 'neutral'
+                const pct = hasBothValues ? pctDiffLabel(valA, valB) : '—'
                 const txtColor = varColor(rA.clave, dir)
 
                 return (
@@ -331,6 +371,21 @@ export default function ComparativoView({
     reload(selectedRuc, periodosA, periods)
   }
 
+  function handleAiAction(action: AiUiAction) {
+    const nextRuc = action.ruc && allRucs.includes(action.ruc) ? action.ruc : selectedRuc
+    const available = periodsByRuc[nextRuc] ?? []
+    const actionA = (action.periodosA ?? []).filter(period => available.includes(period))
+    const actionB = (action.periodosB ?? []).filter(period => available.includes(period))
+    const actionPeriods = (action.periodos ?? []).filter(period => available.includes(period))
+    const nextB = actionB.length > 0 ? actionB : actionPeriods
+    const nextA = actionA.length > 0 ? actionA : previousComparablePeriods(available, nextB)
+    if (nextA.length === 0 || nextB.length === 0) return
+    setSelectedRuc(nextRuc)
+    setPeriodosA(nextA)
+    setPeriodosB(nextB)
+    reload(nextRuc, nextA, nextB)
+  }
+
   function handleExport() {
     if (!data) return
     exportarComparativo(selectedRuc, periodosA, periodosB, data.a, data.b)
@@ -338,6 +393,8 @@ export default function ComparativoView({
 
   const labelA = labelPeriodo(periodosA)
   const labelB = labelPeriodo(periodosB)
+  const selectedPeriodsForAi = Array.from(new Set([...periodosA, ...periodosB])).sort()
+  const dashboardHref = buildPeriodHref('/', selectedRuc, periodosB.length > 0 ? periodosB : periodosA)
 
   return (
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
@@ -372,7 +429,7 @@ export default function ComparativoView({
                 onPeriodsChange={handlePeriodosAChange}
               />
               <Link
-                href="/"
+                href={dashboardHref}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
@@ -485,6 +542,11 @@ export default function ComparativoView({
           </>
         )}
       </main>
+      <GrokAssistantDock
+        ruc={selectedRuc}
+        selectedPeriods={selectedPeriodsForAi}
+        onApplyAction={handleAiAction}
+      />
     </div>
   )
 }

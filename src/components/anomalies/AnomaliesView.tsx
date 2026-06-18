@@ -4,10 +4,12 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, AlertTriangle, CheckCircle, ShieldAlert } from 'lucide-react'
 import { getAnomaliesData } from '@/app/actions'
-import type { AnomaliesData } from '@/app/actions'
+import type { AiUiAction, AnomaliesData } from '@/app/actions'
 import { fmtNumero, fmtPeriodo } from '@/lib/format'
+import { buildPeriodHref } from '@/lib/period-selection'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 import BenfordChart from '@/components/anomalies/BenfordChart'
+import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
 
 interface AnomaliesViewProps {
   allRucs: string[]
@@ -74,6 +76,18 @@ export default function AnomaliesView({
     reload(selectedRuc, periods)
   }
 
+  function handleAiAction(action: AiUiAction) {
+    const nextRuc = action.ruc && allRucs.includes(action.ruc) ? action.ruc : selectedRuc
+    const available = periodsByRuc[nextRuc] ?? []
+    const nextPeriods = (action.periodos ?? []).filter(period => available.includes(period))
+    if (nextPeriods.length === 0) return
+    setSelectedRuc(nextRuc)
+    setSelectedPeriods(nextPeriods)
+    reload(nextRuc, nextPeriods)
+  }
+
+  const dashboardHref = buildPeriodHref('/', selectedRuc, selectedPeriods)
+
   const periodoLabel = selectedPeriods.length === 1
     ? fmtPeriodo(selectedPeriods[0])
     : selectedPeriods.length > 1
@@ -88,7 +102,7 @@ export default function AnomaliesView({
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <Link href="/" className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 transition-colors">
+              <Link href={dashboardHref} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 transition-colors">
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Dashboard
               </Link>
@@ -330,6 +344,12 @@ export default function AnomaliesView({
           </>
         )}
       </main>
+
+      <GrokAssistantDock
+        ruc={selectedRuc}
+        selectedPeriods={selectedPeriods}
+        onApplyAction={handleAiAction}
+      />
     </div>
   )
 }

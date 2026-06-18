@@ -100,11 +100,13 @@ def _periods_to_filters(periodos: list[str]) -> dict[str, Any]:
     }
 
 
+def _unique_periods(periodos: list[str]) -> list[str]:
+    return sorted({period for period in periodos if re.fullmatch(r"\d{6}", period)})
+
+
 def _validate_date_range(start: date, end: date) -> None:
     if start > end:
         raise AiToolValidationError("startDate must be before or equal to endDate")
-    if (end - start).days > 730:
-        raise AiToolValidationError("Date range is too large; maximum is 730 days")
 
 
 class AiToolExecutor:
@@ -490,8 +492,14 @@ class AiToolExecutor:
             "client_id": client_id,
             "summaryA": summary_a,
             "summaryB": summary_b,
+            "periodosA": summary_a.get("periodos", []) if isinstance(summary_a.get("periodos"), list) else [],
+            "periodosB": summary_b.get("periodos", []) if isinstance(summary_b.get("periodos"), list) else [],
             "comparison": comparison,
-            "ui_action": summary_b.get("ui_action"),
+            "ui_action": self._comparison_ui_action(
+                client_id,
+                summary_a.get("periodos", []) if isinstance(summary_a.get("periodos"), list) else [],
+                summary_b.get("periodos", []) if isinstance(summary_b.get("periodos"), list) else [],
+            ),
         }
 
     def get_breakdown(self, args: dict[str, Any], context: AiContext, kind: str) -> dict[str, Any]:
@@ -632,4 +640,17 @@ class AiToolExecutor:
             "ruc": client_id,
             "periodos": periodos,
             "filters": _periods_to_filters(periodos),
+        }
+
+    def _comparison_ui_action(self, client_id: str, periodos_a: list[str], periodos_b: list[str]) -> dict[str, Any]:
+        combined = _unique_periods([*periodos_a, *periodos_b])
+        return {
+            "type": "render_dashboard",
+            "dashboard_id": "variance_analysis",
+            "href": "/comparativo",
+            "ruc": client_id,
+            "periodos": combined,
+            "periodosA": _unique_periods(periodos_a),
+            "periodosB": _unique_periods(periodos_b),
+            "filters": _periods_to_filters(combined),
         }

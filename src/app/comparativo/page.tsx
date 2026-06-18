@@ -1,7 +1,9 @@
 import { getAvailableRucs, getAllPeriods, getComparativoData } from '@/app/actions'
 import ComparativoView from '@/components/comparativo/ComparativoView'
+import { selectComparativoRucAndPeriods } from '@/lib/period-selection'
+import type { PeriodSearchParams } from '@/lib/period-selection'
 
-export default async function ComparativoPage() {
+export default async function ComparativoPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {
@@ -15,17 +17,21 @@ export default async function ComparativoPage() {
   }
 
   const periodsByRuc = await getAllPeriods(rucs)
-  const defaultRuc   = rucs[0]
-  const allPeriods   = periodsByRuc[defaultRuc] ?? []
-  const years        = [...new Set(allPeriods.map(p => p.substring(0, 4)))].sort()
+  const {
+    selectedRuc: defaultRuc,
+    periodosA,
+    periodosB,
+  } = selectComparativoRucAndPeriods({
+    rucs,
+    periodsByRuc,
+    searchParams,
+    defaultRuc: rucs[0],
+  })
 
   // Período A = penúltimo año; Período B = último año (o mismo año si solo hay uno)
-  const lastYear     = years[years.length - 1] ?? ''
-  const prevYear     = years.length >= 2 ? years[years.length - 2] : lastYear
-  const periodosA    = allPeriods.filter(p => p.startsWith(prevYear))
-  const periodosB    = allPeriods.filter(p => p.startsWith(lastYear))
-
-  const initialData = await getComparativoData(defaultRuc, periodosA, periodosB)
+  const initialData = periodosA.length > 0 && periodosB.length > 0
+    ? await getComparativoData(defaultRuc, periodosA, periodosB)
+    : null
 
   return (
     <ComparativoView

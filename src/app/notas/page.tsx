@@ -3,8 +3,10 @@ export const revalidate = 0
 
 import { getAvailableRucs, getAllPeriods, getNotasData, getCompanyConfig } from '@/app/actions'
 import NotasView from './NotasView'
+import { selectRucAndPeriods } from '@/lib/period-selection'
+import type { PeriodSearchParams } from '@/lib/period-selection'
 
-export default async function NotasPage() {
+export default async function NotasPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {
@@ -24,11 +26,11 @@ export default async function NotasPage() {
     companyNames[ruc] = cfg?.razonSocial ?? ruc
   }
 
-  const defaultRuc     = rucs.find(r => (periodsByRuc[r] ?? []).length > 0) ?? rucs[0]
-  const allPeriods     = periodsByRuc[defaultRuc] ?? []
-  const years          = [...new Set(allPeriods.map(p => p.substring(0, 4)))].sort()
-  const lastYear       = years[years.length - 1] ?? ''
-  const defaultPeriods = allPeriods.filter(p => p.startsWith(lastYear))
+  const { selectedRuc: defaultRuc, selectedPeriods: defaultPeriods } = selectRucAndPeriods({
+    rucs,
+    periodsByRuc,
+    searchParams,
+  })
 
   const initialData = defaultPeriods.length > 0
     ? await getNotasData(defaultRuc, defaultPeriods)

@@ -4,10 +4,12 @@ import { useState, useTransition } from 'react'
 import { Download, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { getMayorPageData, getMayorCompletoData } from '@/app/actions'
-import type { MayorPageData } from '@/app/actions'
+import type { AiUiAction, MayorPageData } from '@/app/actions'
 import { fmtNumero, fmtContable, fmtPeriodo } from '@/lib/format'
 import { exportarMayor, exportarMayorCompleto } from '@/lib/excel-export'
+import { buildPeriodHref } from '@/lib/period-selection'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
+import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
 
 interface MayorViewProps {
   allRucs: string[]
@@ -53,6 +55,16 @@ export default function MayorView({
     reload(selectedRuc, periods, data.selectedCuenta)
   }
 
+  function handleAiAction(action: AiUiAction) {
+    const nextRuc = action.ruc && allRucs.includes(action.ruc) ? action.ruc : selectedRuc
+    const available = periodsByRuc[nextRuc] ?? []
+    const nextPeriods = (action.periodos ?? []).filter(period => available.includes(period))
+    if (nextPeriods.length === 0) return
+    setSelectedRuc(nextRuc)
+    setSelectedPeriods(nextPeriods)
+    reload(nextRuc, nextPeriods, null)
+  }
+
   function handleCuentaChange(codCuenta: string) {
     reload(selectedRuc, selectedPeriods, codCuenta)
   }
@@ -67,6 +79,8 @@ export default function MayorView({
       exportarMayorCompleto(selectedRuc, selectedPeriods, majors)
     })
   }
+
+  const dashboardHref = buildPeriodHref('/', selectedRuc, selectedPeriods)
 
   const { mayor, cuentas, selectedCuenta } = data
 
@@ -84,7 +98,7 @@ export default function MayorView({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <Link
-                href="/"
+                href={dashboardHref}
                 className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 transition-colors"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
@@ -251,6 +265,12 @@ export default function MayorView({
           </div>
         )}
       </main>
+
+      <GrokAssistantDock
+        ruc={selectedRuc}
+        selectedPeriods={selectedPeriods}
+        onApplyAction={handleAiAction}
+      />
     </div>
   )
 }

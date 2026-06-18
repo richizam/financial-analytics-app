@@ -1,7 +1,9 @@
 import { getAvailableRucs, getAllPeriods, getAnomaliesData } from '@/app/actions'
 import AnomaliesView from '@/components/anomalies/AnomaliesView'
+import { selectRucAndPeriods } from '@/lib/period-selection'
+import type { PeriodSearchParams } from '@/lib/period-selection'
 
-export default async function AnomaliesPage() {
+export default async function AnomaliesPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {
@@ -15,13 +17,16 @@ export default async function AnomaliesPage() {
   }
 
   const periodsByRuc  = await getAllPeriods(rucs)
-  const defaultRuc    = rucs[0]
-  const allPeriods    = periodsByRuc[defaultRuc] ?? []
-  const years         = [...new Set(allPeriods.map(p => p.substring(0, 4)))].sort()
-  const lastYear      = years[years.length - 1] ?? ''
-  const defaultPeriods = allPeriods.filter(p => p.startsWith(lastYear))
+  const { selectedRuc: defaultRuc, selectedPeriods: defaultPeriods } = selectRucAndPeriods({
+    rucs,
+    periodsByRuc,
+    searchParams,
+    defaultRuc: rucs[0],
+  })
 
-  const initialData = await getAnomaliesData(defaultRuc, defaultPeriods)
+  const initialData = defaultPeriods.length > 0
+    ? await getAnomaliesData(defaultRuc, defaultPeriods)
+    : null
 
   return (
     <AnomaliesView

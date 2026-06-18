@@ -5,8 +5,10 @@ import { getAvailableRucs, getAllPeriods, getDashboardData, getCompanyConfig } f
 import Dashboard from '@/components/dashboard/Dashboard'
 import Link from 'next/link'
 import { Upload } from 'lucide-react'
+import { selectRucAndPeriods } from '@/lib/period-selection'
+import type { PeriodSearchParams } from '@/lib/period-selection'
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams?: PeriodSearchParams }) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {
@@ -39,11 +41,11 @@ export default async function Home() {
     companyNames[ruc] = cfg?.razonSocial ?? ruc
   }
 
-  const defaultRuc     = rucs.find(r => (periodsByRuc[r] ?? []).length > 0) ?? rucs[0]
-  const allPeriods     = periodsByRuc[defaultRuc] ?? []
-  const years          = [...new Set(allPeriods.map(p => p.substring(0, 4)))].sort()
-  const lastYear       = years[years.length - 1] ?? ''
-  const defaultPeriods = allPeriods.filter(p => p.startsWith(lastYear))
+  const { selectedRuc: defaultRuc, selectedPeriods: defaultPeriods } = selectRucAndPeriods({
+    rucs,
+    periodsByRuc,
+    searchParams,
+  })
 
   const initialData = defaultPeriods.length > 0
     ? await getDashboardData(defaultRuc, defaultPeriods)

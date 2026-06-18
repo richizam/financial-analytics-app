@@ -7,7 +7,8 @@ import { getDashboardData } from '@/app/actions'
 import type { AiUiAction, DashboardData } from '@/app/actions'
 import { fmtMoneda, fmtPct, fmtVeces, fmtPeriodo } from '@/lib/format'
 import { exportarExcel } from '@/lib/excel-export'
-import GrokAssistant from '@/components/ai/GrokAssistant'
+import { buildPeriodHref } from '@/lib/period-selection'
+import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
 import KPICard from '@/components/ui/KPICard'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 import PLBarChart from '@/components/charts/PLBarChart'
@@ -153,6 +154,7 @@ export default function Dashboard({
 
   // First RUC (other than current) that has CSV data — used for "← Volver" button
   const fallbackRuc = allRucs.find(r => r !== selectedRuc && (periodsByRuc[r] ?? []).length > 0) ?? null
+  const periodHref = (pathname: string) => buildPeriodHref(pathname, selectedRuc, selectedPeriods)
 
   const periodoLabel = selectedPeriods.length === 1
     ? fmtPeriodo(selectedPeriods[0])
@@ -197,28 +199,28 @@ export default function Dashboard({
                 <Plus className="h-3.5 w-3.5" />
               </Link>
               <Link
-                href="/comparativo"
+                href={periodHref('/comparativo')}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
               >
                 <GitCompare className="h-3.5 w-3.5" />
                 Comparativo
               </Link>
               <Link
-                href="/anomalies"
+                href={periodHref('/anomalies')}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
               >
                 <ShieldAlert className="h-3.5 w-3.5" />
                 Anomalías
               </Link>
               <Link
-                href="/mayor"
+                href={periodHref('/mayor')}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
               >
                 <BookOpen className="h-3.5 w-3.5" />
                 Libro Mayor
               </Link>
               <Link
-                href="/notas"
+                href={periodHref('/notas')}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
               >
                 <FileText className="h-3.5 w-3.5" />
@@ -250,13 +252,8 @@ export default function Dashboard({
 
       {/* ── Main dashboard content ── */}
       {!hasNoPeriods && data && (
+        <>
         <main className="mx-auto max-w-7xl px-4 py-6 space-y-6">
-          <GrokAssistant
-            ruc={selectedRuc}
-            selectedPeriods={selectedPeriods}
-            onApplyAction={handleAiAction}
-          />
-
           {/* ── KPI Cards ── */}
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KPICard
@@ -352,6 +349,12 @@ export default function Dashboard({
             />
           </section>
         </main>
+          <GrokAssistantDock
+            ruc={selectedRuc}
+            selectedPeriods={selectedPeriods}
+            onApplyAction={handleAiAction}
+          />
+        </>
       )}
     </div>
   )

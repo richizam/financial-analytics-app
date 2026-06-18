@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
+from datetime import date
 from typing import Any
 
 from backend.app.core.config import Settings
@@ -10,6 +13,64 @@ from .csv_profile import TARGET_SCHEMA, build_csv_profile, heuristic_mapping, sa
 from .prompts import CSV_MAPPING_PROMPT, SYSTEM_PROMPT
 from .tools import AiContext, AiToolExecutor, AiToolValidationError
 from .xai_client import XaiClient, XaiClientError, XaiConfigurationError
+
+
+MONTH_ALIASES = {
+    "ene": "01",
+    "enero": "01",
+    "jan": "01",
+    "january": "01",
+    "feb": "02",
+    "febrero": "02",
+    "february": "02",
+    "mar": "03",
+    "marzo": "03",
+    "march": "03",
+    "abr": "04",
+    "abril": "04",
+    "apr": "04",
+    "april": "04",
+    "may": "05",
+    "mayo": "05",
+    "jun": "06",
+    "junio": "06",
+    "june": "06",
+    "jul": "07",
+    "julio": "07",
+    "july": "07",
+    "ago": "08",
+    "agosto": "08",
+    "aug": "08",
+    "august": "08",
+    "sep": "09",
+    "sept": "09",
+    "septiembre": "09",
+    "setiembre": "09",
+    "september": "09",
+    "oct": "10",
+    "octubre": "10",
+    "october": "10",
+    "nov": "11",
+    "noviembre": "11",
+    "november": "11",
+    "dic": "12",
+    "diciembre": "12",
+    "dec": "12",
+    "december": "12",
+}
+MONTH_PATTERN = "|".join(sorted((re.escape(month) for month in MONTH_ALIASES), key=len, reverse=True))
+YEAR_PATTERN = r"\d{4}"
+YEAR_TOKEN_PATTERN = r"(?:\d{4}|\d{2})"
+PERIOD_LABEL_MONTHS = ("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+DEFAULT_COMPARISON_METRICS = [
+    "revenue",
+    "costs",
+    "gross_profit",
+    "gross_margin",
+    "operating_profit",
+    "net_profit",
+    "ebitda",
+]
 
 
 class AiAssistantService:
@@ -30,36 +91,54 @@ class AiAssistantService:
             raise AiToolValidationError("message is required")
 
         context = self._context(ruc, periodos)
-        messages = self._initial_input(clean_message, context, conversation)
-        response = self.xai_client.create_chat_completion(
-            messages,
-            tools=self.tools.definitions(context),
-        )
+        local_response = self._local_intent_response(clean_message, context)
+        if local_response:
+            return local_response
 
         executed_results: list[dict[str, Any]] = []
-        for _ in range(3):
-            calls = self._chat_function_calls(response)
-            if not calls:
-                break
-            assistant_message = self._chat_message(response)
-            if assistant_message:
-                messages.append(assistant_message)
-            tool_outputs: list[dict[str, Any]] = []
-            for call in calls:
-                result = self.tools.execute(call["name"], call["arguments"], context)
-                executed_results.append(result)
-                tool_outputs.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call["call_id"],
-                        "content": json.dumps(result, ensure_ascii=False),
-                    }
-                )
-            messages.extend(tool_outputs)
+        try:
+            messages = self._initial_input(clean_message, context, conversation)
             response = self.xai_client.create_chat_completion(
                 messages,
                 tools=self.tools.definitions(context),
             )
+
+            for _ in range(3):
+                calls = self._chat_function_calls(response)
+                if not calls:
+                    break
+                assistant_message = self._chat_message(response)
+                if assistant_message:
+                    messages.append(assistant_message)
+                tool_outputs: list[dict[str, Any]] = []
+                for call in calls:
+                    result = self.tools.execute(call["name"], call["arguments"], context)
+                    executed_results.append(result)
+                    tool_outputs.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call["call_id"],
+                            "content": json.dumps(result, ensure_ascii=False),
+                        }
+                    )
+                messages.extend(tool_outputs)
+                response = self.xai_client.create_chat_completion(
+                    messages,
+                    tools=self.tools.definitions(context),
+                )
+        except (XaiClientError, XaiConfigurationError) as exc:
+            return {
+                "message": (
+                    "No pude contactar al proveedor de AI en este momento. "
+                    "Prueba otra vez en unos segundos."
+                ),
+                "ui_action": None,
+                "citations": [],
+                "executed_tools": [],
+                "provider": "local-fallback",
+                "model": self.xai_client.model,
+                "error": str(exc),
+            }
 
         message_text = self._chat_text(response)
         if not message_text:
@@ -84,6 +163,562 @@ class AiAssistantService:
             "provider": "xai",
             "model": self.xai_client.model,
         }
+
+    def _local_intent_response(self, message: str, context: AiContext) -> dict[str, Any] | None:
+        normalized = self._normalize_text(message)
+        periodos = self._periods_for_message(normalized, context)
+        if self._asks_for_anomalies(normalized):
+            result = self._execute_for_periods("getAnomalies", context, periodos)
+            return self._local_tool_response(
+                result,
+                self._anomaly_message(result),
+                "local-intent",
+            )
+        if self._asks_for_notes(normalized):
+            result = self._execute_for_periods(
+                "renderDashboard",
+                context,
+                periodos,
+                {"dashboardType": "notes"},
+            )
+            return self._local_tool_response(
+                result,
+                self._dashboard_message("Notas NIIF", result),
+                "local-intent",
+            )
+        if self._asks_for_general_ledger(normalized):
+            result = self._execute_for_periods(
+                "renderDashboard",
+                context,
+                periodos,
+                {"dashboardType": "general_ledger"},
+            )
+            return self._local_tool_response(
+                result,
+                self._dashboard_message("Libro Mayor", result),
+                "local-intent",
+            )
+        if self._asks_for_comparison(normalized):
+            comparison_periods = self._comparison_period_sets(normalized, context)
+            if comparison_periods:
+                periodos_a, periodos_b = comparison_periods
+                result = self._execute_comparison(context, periodos_a, periodos_b)
+                return self._local_tool_response(
+                    result,
+                    self._comparison_message(result),
+                    "local-intent",
+                )
+        if self._asks_for_data_dashboard(normalized):
+            result = self._execute_for_periods(
+                "renderDashboard",
+                context,
+                periodos,
+                {"dashboardType": "financial_summary"},
+            )
+            return self._local_tool_response(
+                result,
+                self._dashboard_message("el dashboard principal", result),
+                "local-intent",
+            )
+        if self._asks_for_main_dashboard(normalized):
+            result = self._execute_for_periods(
+                "renderDashboard",
+                context,
+                periodos,
+                {"dashboardType": "financial_summary"},
+            )
+            return self._local_tool_response(
+                result,
+                self._dashboard_message("el dashboard principal", result),
+                "local-intent",
+            )
+        return None
+
+    def _execute_for_periods(
+        self,
+        tool_name: str,
+        context: AiContext,
+        periodos: list[str],
+        extra_args: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        filters = self._period_filters(periodos)
+        args: dict[str, Any] = {
+            "clientId": context.selected_ruc,
+            "startDate": filters["startDate"],
+            "endDate": filters["endDate"],
+        }
+        if tool_name == "renderDashboard":
+            args = {
+                "clientId": context.selected_ruc,
+                "filters": filters,
+                **(extra_args or {}),
+            }
+        elif extra_args:
+            args.update(extra_args)
+        return self.tools.execute(tool_name, args, context)
+
+    def _execute_comparison(self, context: AiContext, periodos_a: list[str], periodos_b: list[str]) -> dict[str, Any]:
+        return self.tools.execute(
+            "comparePeriods",
+            {
+                "clientId": context.selected_ruc,
+                "periodA": self._period_filters(periodos_a),
+                "periodB": self._period_filters(periodos_b),
+                "metrics": DEFAULT_COMPARISON_METRICS,
+            },
+            context,
+        )
+
+    def _local_tool_response(self, result: dict[str, Any], message: str, provider: str) -> dict[str, Any]:
+        citation_type = "metric_result" if result.get("source") == "calculated_by_backend" else "tool_result"
+        citations = []
+        if result.get("result_id"):
+            citations.append(
+                {
+                    "type": citation_type,
+                    "source": result.get("tool_name"),
+                    "result_id": result.get("result_id"),
+                }
+            )
+        return {
+            "message": message,
+            "ui_action": result.get("ui_action") if isinstance(result.get("ui_action"), dict) else None,
+            "citations": citations,
+            "executed_tools": [str(result.get("tool_name"))] if result.get("tool_name") else [],
+            "provider": provider,
+            "model": None,
+        }
+
+    def _anomaly_message(self, result: dict[str, Any]) -> str:
+        if result.get("status") != "success":
+            return "Te llevo a Anomalias, pero no encontre datos para el periodo seleccionado."
+        period_label = self._periodos_label(result.get("periodos", []))
+        score = result.get("riskScore", {}).get("score")
+        nivel = result.get("riskScore", {}).get("nivel")
+        total = result.get("totalEntries")
+        duplicates = result.get("duplicateGroups")
+        outliers = result.get("outliers")
+        return (
+            f"Listo. Te muestro la pantalla de Anomalias para {period_label}. "
+            f"Riesgo {nivel}, score {score}/100, "
+            f"{duplicates} grupos duplicados y {outliers} outliers sobre {total} asientos."
+        )
+
+    def _dashboard_message(self, view_name: str, result: dict[str, Any]) -> str:
+        action = result.get("ui_action") if isinstance(result.get("ui_action"), dict) else {}
+        periodos = action.get("periodos", []) if isinstance(action, dict) else []
+        if not periodos:
+            return f"No encontre datos para abrir {view_name} con el periodo solicitado."
+        return f"Listo. Abro {view_name} para {self._periodos_label(periodos)}."
+
+    def _comparison_message(self, result: dict[str, Any]) -> str:
+        action = result.get("ui_action") if isinstance(result.get("ui_action"), dict) else {}
+        periodos_a = action.get("periodosA", []) if isinstance(action, dict) else []
+        periodos_b = action.get("periodosB", []) if isinstance(action, dict) else []
+        if not periodos_a or not periodos_b:
+            return "No encontre dos periodos con datos para abrir el comparativo solicitado."
+        return (
+            "Listo. Abro Comparativo para "
+            f"{self._periodos_label(periodos_a)} vs {self._periodos_label(periodos_b)}."
+        )
+
+    def _active_periods(self, context: AiContext) -> list[str]:
+        available = context.available_periods_by_ruc.get(context.selected_ruc, [])
+        selected = [period for period in context.selected_periodos if period in available]
+        if selected:
+            return sorted(selected)
+        years = sorted({period[:4] for period in available})
+        last_year = years[-1] if years else ""
+        return [period for period in available if period.startswith(last_year)]
+
+    def _periods_for_message(self, normalized: str, context: AiContext) -> list[str]:
+        available = sorted(context.available_periods_by_ruc.get(context.selected_ruc, []))
+        month_range_periods = self._periods_for_explicit_month_range(normalized, available)
+        if month_range_periods is not None:
+            return month_range_periods
+        year_range_periods = self._periods_for_explicit_year_range(normalized, available)
+        if year_range_periods is not None:
+            return year_range_periods
+        years = self._years_in_message(normalized)
+        if years:
+            periodos = [period for period in available if period[:4] in years]
+            quarter = self._quarter_in_message(normalized)
+            if quarter is not None:
+                months = {
+                    1: {"01", "02", "03"},
+                    2: {"04", "05", "06"},
+                    3: {"07", "08", "09"},
+                    4: {"10", "11", "12"},
+                }[quarter]
+                periodos = [period for period in periodos if period[4:6] in months]
+            return periodos
+        return self._active_periods(context)
+
+    def _comparison_period_sets(self, normalized: str, context: AiContext) -> tuple[list[str], list[str]] | None:
+        for left, right in self._comparison_fragment_candidates(normalized):
+            periodos_a = self._periods_for_comparison_fragment(left, normalized, context)
+            periodos_b = self._periods_for_comparison_fragment(right, normalized, context)
+            if periodos_a and periodos_b:
+                return periodos_a, periodos_b
+        return None
+
+    def _comparison_fragment_candidates(self, normalized: str) -> list[tuple[str, str]]:
+        candidates: list[tuple[str, str]] = []
+        separator_pattern = (
+            r"\b(?:vs\.?|versus|contra|frente\s+a|comparad[oa]s?\s+con|respecto\s+a|con)\b"
+        )
+        for match in re.finditer(separator_pattern, normalized):
+            left = normalized[: match.start()].strip()
+            right = normalized[match.end() :].strip()
+            if left and right:
+                candidates.append((left, right))
+
+        between_match = re.search(r"\bentre\b(?P<left>.+?)\by\b(?P<right>.+)", normalized)
+        if between_match:
+            candidates.append((between_match.group("left").strip(), between_match.group("right").strip()))
+
+        for match in re.finditer(r"\by\b", normalized):
+            left = normalized[: match.start()].strip()
+            right = normalized[match.end() :].strip()
+            if left and right:
+                candidates.append((left, right))
+        return candidates
+
+    def _periods_for_comparison_fragment(
+        self,
+        fragment: str,
+        full_normalized: str,
+        context: AiContext,
+    ) -> list[str] | None:
+        available = sorted(context.available_periods_by_ruc.get(context.selected_ruc, []))
+        candidate = fragment.strip(" .,:;")
+        full_years = self._years_in_message(full_normalized)
+        if not self._years_in_message(candidate) and not self._has_period_token(candidate):
+            return None
+        if not self._years_in_message(candidate) and len(full_years) == 1:
+            candidate = f"{candidate} {full_years[0]}"
+
+        month_range_periods = self._periods_for_explicit_month_range(candidate, available)
+        if month_range_periods is not None:
+            return month_range_periods
+
+        year_range_periods = self._periods_for_explicit_year_range(candidate, available)
+        if year_range_periods is not None:
+            return year_range_periods
+
+        years = self._years_in_message(candidate)
+        quarter = self._quarter_in_message(candidate)
+        if years and quarter is not None:
+            months = {
+                1: {"01", "02", "03"},
+                2: {"04", "05", "06"},
+                3: {"07", "08", "09"},
+                4: {"10", "11", "12"},
+            }[quarter]
+            return [period for period in available if period[:4] in years and period[4:6] in months]
+
+        if years:
+            return [period for period in available if period[:4] in years]
+        return None
+
+    def _has_period_token(self, normalized: str) -> bool:
+        return bool(
+            re.search(rf"\b{MONTH_PATTERN}\b", normalized)
+            or self._quarter_in_message(normalized) is not None
+            or re.search(r"(?<!\d)\d{4}(?:0[1-9]|1[0-2])(?!\d)", normalized)
+            or re.search(r"(?<!\d)(?:0?[1-9]|1[0-2])[-/]\d{2,4}(?!\d)", normalized)
+            or re.search(r"(?<!\d)\d{2,4}[-/](?:0?[1-9]|1[0-2])(?!\d)", normalized)
+        )
+
+    def _periods_for_explicit_month_range(self, normalized: str, available: list[str]) -> list[str] | None:
+        references = self._month_period_references(normalized)
+        if not references:
+            return None
+        start = references[0][1]
+        end = references[1][1] if len(references) > 1 else start
+        if end < start:
+            start, end = end, start
+        return [period for period in available if start <= period <= end]
+
+    def _periods_for_explicit_year_range(self, normalized: str, available: list[str]) -> list[str] | None:
+        references = self._year_references(normalized)
+        if len(references) < 2 or not self._has_range_connector_between(normalized, references[0][0], references[1][0]):
+            return None
+        start_year = references[0][1]
+        end_year = references[1][1]
+        if end_year < start_year:
+            start_year, end_year = end_year, start_year
+        return [period for period in available if start_year <= period[:4] <= end_year]
+
+    def _year_references(self, normalized: str) -> list[tuple[int, str]]:
+        return [(match.start(), match.group(0)) for match in re.finditer(rf"\b{YEAR_PATTERN}\b", normalized)]
+
+    def _has_range_connector_between(self, normalized: str, start_position: int, end_position: int) -> bool:
+        between = normalized[start_position:end_position]
+        return bool(
+            re.search(
+                r"\b(desde|hasta|entre|from|to|through|thru|until|al|a|y)\b|[-/]",
+                between,
+            )
+        )
+
+    def _month_period_references(self, normalized: str) -> list[tuple[int, str]]:
+        references: list[tuple[int, str]] = []
+        spans: set[tuple[int, int]] = set()
+
+        references.extend(self._month_name_period_references(normalized))
+
+        def add_reference(match: re.Match[str], year: str, month: str) -> None:
+            span = match.span()
+            if span in spans:
+                return
+            normalized_month = month.zfill(2)
+            normalized_year = self._normalize_year_token(year)
+            if normalized_month < "01" or normalized_month > "12":
+                return
+            spans.add(span)
+            references.append((span[0], f"{normalized_year}{normalized_month}"))
+
+        for match in re.finditer(
+            rf"\b(?P<month>{MONTH_PATTERN})\b[\s/-]*(?:(?:de|del)\s+)?(?P<year>{YEAR_TOKEN_PATTERN})\b",
+            normalized,
+        ):
+            add_reference(match, match.group("year"), MONTH_ALIASES[match.group("month")])
+
+        for match in re.finditer(
+            rf"(?<!\d)(?P<year>{YEAR_TOKEN_PATTERN})[-/](?P<month>0?[1-9]|1[0-2])(?!\d)",
+            normalized,
+        ):
+            add_reference(match, match.group("year"), match.group("month"))
+
+        for match in re.finditer(
+            rf"(?<!\d)(?P<month>0?[1-9]|1[0-2])[-/](?P<year>{YEAR_TOKEN_PATTERN})(?!\d)",
+            normalized,
+        ):
+            add_reference(match, match.group("year"), match.group("month"))
+
+        for match in re.finditer(r"(?<!\d)(?P<period>\d{4}(?:0[1-9]|1[0-2]))(?!\d)", normalized):
+            period = match.group("period")
+            add_reference(match, period[:4], period[4:6])
+
+        references.sort(key=lambda item: item[0])
+        deduped: list[tuple[int, str]] = []
+        seen_periods: set[str] = set()
+        for position, period in references:
+            if period in seen_periods:
+                continue
+            seen_periods.add(period)
+            deduped.append((position, period))
+        return deduped
+
+    def _month_name_period_references(self, normalized: str) -> list[tuple[int, str]]:
+        mentions: list[tuple[int, str, str | None]] = []
+        for match in re.finditer(
+            rf"\b(?P<month>{MONTH_PATTERN})\b(?:[\s/-]*(?:(?:de|del)\s+)?(?P<year>{YEAR_TOKEN_PATTERN})\b)?",
+            normalized,
+        ):
+            year = match.group("year")
+            mentions.append((match.start(), MONTH_ALIASES[match.group("month")], self._normalize_year_token(year) if year else None))
+
+        if not mentions:
+            return []
+
+        explicit = [(position, f"{year}{month}") for position, month, year in mentions if year]
+        if len(explicit) >= 2:
+            return explicit
+        if len(mentions) == 1:
+            return explicit
+
+        start_position, start_month, start_year = mentions[0]
+        end_position, end_month, end_year = mentions[1]
+
+        if start_year and not end_year:
+            inferred_end_year = int(start_year) + (1 if end_month < start_month else 0)
+            end_year = str(inferred_end_year)
+        elif end_year and not start_year:
+            inferred_start_year = int(end_year) - (1 if start_month > end_month else 0)
+            start_year = str(inferred_start_year)
+        elif not start_year and not end_year:
+            years = self._years_in_message(normalized)
+            if len(years) != 1:
+                return explicit
+            shared_year = years[0]
+            start_year = shared_year
+            inferred_end_year = int(shared_year) + (1 if end_month < start_month else 0)
+            end_year = str(inferred_end_year)
+
+        if not start_year or not end_year:
+            return explicit
+
+        return [
+            (start_position, f"{start_year}{start_month}"),
+            (end_position, f"{end_year}{end_month}"),
+        ]
+
+    def _years_in_message(self, normalized: str) -> list[str]:
+        years: list[str] = []
+        for match in re.findall(rf"\b{YEAR_PATTERN}\b", normalized):
+            if match not in years:
+                years.append(match)
+        return years
+
+    def _normalize_year_token(self, year: str) -> str:
+        if len(year) == 4:
+            return year
+        value = int(year)
+        return f"{2000 + value:04d}" if value < 80 else f"{1900 + value:04d}"
+
+    def _quarter_in_message(self, normalized: str) -> int | None:
+        ordinal_quarters = {
+            "primer trimestre": 1,
+            "primero trimestre": 1,
+            "segundo trimestre": 2,
+            "tercer trimestre": 3,
+            "tercero trimestre": 3,
+            "cuarto trimestre": 4,
+        }
+        for phrase, quarter in ordinal_quarters.items():
+            if phrase in normalized:
+                return quarter
+        match = re.search(r"\bq([1-4])\b|\b(?:trimestre|trim)\s*([1-4])\b", normalized)
+        if not match:
+            return None
+        value = match.group(1) or match.group(2)
+        return int(value)
+
+    def _periodos_label(self, periodos: list[str]) -> str:
+        sorted_periodos = sorted(periodos)
+        if not sorted_periodos:
+            return "el periodo seleccionado"
+        if len(sorted_periodos) == 1:
+            return self._period_label(sorted_periodos[0])
+        return f"{self._period_label(sorted_periodos[0])} - {self._period_label(sorted_periodos[-1])}"
+
+    def _period_label(self, periodo: str) -> str:
+        month = int(periodo[4:6])
+        return f"{PERIOD_LABEL_MONTHS[month - 1]} {periodo[:4]}"
+
+    def _period_filters(self, periodos: list[str]) -> dict[str, Any]:
+        if not periodos:
+            today = date.today().isoformat()
+            return {"startDate": today, "endDate": today, "granularity": "monthly"}
+        sorted_periods = sorted(periodos)
+        start = sorted_periods[0]
+        end = sorted_periods[-1]
+        end_year = int(end[:4])
+        end_month = int(end[4:6])
+        if end_month == 12:
+            end_date = date(end_year, 12, 31)
+        else:
+            end_date = date.fromordinal(date(end_year, end_month + 1, 1).toordinal() - 1)
+        return {
+            "startDate": f"{start[:4]}-{start[4:6]}-01",
+            "endDate": end_date.isoformat(),
+            "granularity": "monthly",
+        }
+
+    def _normalize_text(self, value: str) -> str:
+        return (
+            unicodedata.normalize("NFKD", value)
+            .encode("ascii", "ignore")
+            .decode("ascii")
+            .lower()
+        )
+
+    def _asks_for_anomalies(self, normalized: str) -> bool:
+        return any(
+            keyword in normalized
+            for keyword in (
+                "anomal",
+                "anomalia",
+                "anomalias",
+                "anomaly",
+                "anomalies",
+                "riesgo",
+                "sospechos",
+                "fraud",
+            )
+        )
+
+    def _asks_for_notes(self, normalized: str) -> bool:
+        return "notas niif" in normalized or "notas" in normalized or "financial statement notes" in normalized
+
+    def _asks_for_general_ledger(self, normalized: str) -> bool:
+        return "libro mayor" in normalized or "mayor contable" in normalized or "general ledger" in normalized
+
+    def _asks_for_comparison(self, normalized: str) -> bool:
+        comparison_words = (
+            "compara",
+            "comparar",
+            "comparame",
+            "comparativo",
+            "comparacion",
+            "vs",
+            "versus",
+            "contra",
+            "variacion",
+            "varianza",
+            "diferencia",
+            "diferencias",
+            "cambio",
+            "cambios",
+            "changed",
+            "compare",
+        )
+        return any(word in normalized for word in comparison_words)
+
+    def _asks_for_data_dashboard(self, normalized: str) -> bool:
+        if not self._years_in_message(normalized) and not self._month_period_references(normalized):
+            return False
+        if not any(word in normalized for word in ("dato", "datos", "data", "informacion")):
+            return False
+        return any(
+            phrase in normalized
+            for phrase in (
+                "muestrame",
+                "mostrar",
+                "muestre",
+                "ver",
+                "abre",
+                "abrir",
+                "carga",
+                "cargar",
+                "pon",
+                "show",
+                "open",
+            )
+        )
+
+    def _asks_for_main_dashboard(self, normalized: str) -> bool:
+        other_sections = (
+            "comparativo",
+            "comparar",
+            "variance",
+            "variacion",
+            "varianza",
+            "libro mayor",
+            "mayor contable",
+            "general ledger",
+        )
+        if any(section in normalized for section in other_sections):
+            return False
+        if "dashboard" in normalized or "tablero" in normalized:
+            return True
+        return any(
+            phrase in normalized
+            for phrase in (
+                "dashboard principal",
+                "main dashboard",
+                "pagina principal",
+                "pantalla principal",
+                "volver al inicio",
+                "volver al dashboard",
+                "regresar al dashboard",
+                "vuelve al dashboard",
+                "ir al dashboard",
+                "abre el dashboard",
+            )
+        )
 
     def suggest_csv_mapping(self, filename: str, content: str) -> dict[str, Any]:
         profile = build_csv_profile(filename, content)

@@ -88,6 +88,8 @@ export interface AiUiAction {
   href?: string
   ruc: string
   periodos: string[]
+  periodosA?: string[]
+  periodosB?: string[]
   filters?: {
     startDate?: string | null
     endDate?: string | null

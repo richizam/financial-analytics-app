@@ -35,8 +35,9 @@ export default function PeriodSelector({
 }: PeriodSelectorProps) {
   const available = periodsByRuc[selectedRuc] ?? []
   const years = getYears(available)
+  const selectedYears = getYears(selectedPeriods)
   // Año activo = el del primer período seleccionado, o el último disponible
-  const activeYear = selectedPeriods[0]?.substring(0, 4) ?? years[years.length - 1] ?? ''
+  const activeYear = selectedYears[selectedYears.length - 1] ?? years[years.length - 1] ?? ''
 
   function setYear(year: string) {
     // Al cambiar de año, seleccionar todos los meses de ese año

@@ -4,10 +4,12 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { getNotasData } from '@/app/actions'
-import type { NotasData } from '@/app/actions'
+import type { AiUiAction, NotasData } from '@/app/actions'
 import type { StatementItem } from '@/lib/statements'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 import { fmtPeriodo, fmtNumero } from '@/lib/format'
+import { buildPeriodHref } from '@/lib/period-selection'
+import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
 
 interface NotasViewProps {
   allRucs: string[]
@@ -492,8 +494,19 @@ export default function NotasView({
     reload(selectedRuc, periods)
   }
 
+  function handleAiAction(action: AiUiAction) {
+    const nextRuc = action.ruc && allRucs.includes(action.ruc) ? action.ruc : selectedRuc
+    const available = periodsByRuc[nextRuc] ?? []
+    const nextPeriods = (action.periodos ?? []).filter(period => available.includes(period))
+    if (nextPeriods.length === 0) return
+    setSelectedRuc(nextRuc)
+    setSelectedPeriods(nextPeriods)
+    reload(nextRuc, nextPeriods)
+  }
+
   const label = periodoLabel(selectedPeriods)
   const empresa = companyNames[selectedRuc] ?? selectedRuc
+  const dashboardHref = buildPeriodHref('/', selectedRuc, selectedPeriods)
 
   return (
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
@@ -501,7 +514,7 @@ export default function NotasView({
       <header className="print:hidden sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 shadow-sm">
         <div className="mx-auto flex max-w-5xl items-center gap-4 flex-wrap">
           <Link
-            href="/"
+            href={dashboardHref}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
           >
             <ArrowLeft size={15} /> Volver
@@ -559,6 +572,12 @@ export default function NotasView({
           header, nav { display: none !important; }
         }
       `}</style>
+
+      <GrokAssistantDock
+        ruc={selectedRuc}
+        selectedPeriods={selectedPeriods}
+        onApplyAction={handleAiAction}
+      />
     </div>
   )
 }
