@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+data
+data_asientos.zip
+C:\tmp
+npm-debug.log*
+tsconfig.tsbuildinfo
+.env.local
+.env*.local
