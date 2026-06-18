@@ -5,6 +5,15 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - dependency is declared for real runs.
+    def load_dotenv(*args: object, **kwargs: object) -> bool:
+        return False
+
+
+load_dotenv()
+
 
 def _bool_env(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -37,9 +46,18 @@ class Settings:
         os.getenv("APP_ENV", os.getenv("NODE_ENV", "local")).lower() in {"prod", "production"},
     )
 
+    xai_api_key: str | None = os.getenv("XAI_API_KEY")
+    xai_base_url: str = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1").strip()
+    xai_model: str = os.getenv("XAI_MODEL", "grok-4.3").strip()
+    xai_timeout_seconds: float = float(os.getenv("XAI_TIMEOUT_SECONDS", "45"))
+
     @property
     def api_key_required(self) -> bool:
         return self.backend_require_api_key or bool(self.backend_api_key)
+
+    @property
+    def xai_configured(self) -> bool:
+        return bool(self.xai_api_key)
 
     @property
     def is_production(self) -> bool:
@@ -52,6 +70,10 @@ class Settings:
             raise RuntimeError("DATABASE_URL is required when BACKEND_STORAGE=db")
         if self.api_key_required and not self.backend_api_key:
             raise RuntimeError("BACKEND_API_KEY is required when backend API key protection is enabled")
+        if not self.xai_base_url:
+            raise RuntimeError("XAI_BASE_URL cannot be empty")
+        if not self.xai_model:
+            raise RuntimeError("XAI_MODEL cannot be empty")
 
 
 @lru_cache(maxsize=1)

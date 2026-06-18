@@ -82,6 +82,51 @@ export interface NotasData {
   periodos: string[]
 }
 
+export interface AiUiAction {
+  type: 'render_dashboard'
+  dashboard_id: string
+  href?: string
+  ruc: string
+  periodos: string[]
+  filters?: {
+    startDate?: string | null
+    endDate?: string | null
+    granularity?: string
+  }
+}
+
+export interface AiChatResponse {
+  message: string
+  ui_action: AiUiAction | null
+  citations: Array<{ type: string; source: string; result_id: string }>
+  executed_tools: string[]
+  provider: string
+  model?: string
+}
+
+export interface CsvMappingProposal {
+  mapping: Record<string, string | null>
+  detected_format: Record<string, string | null>
+  confidence: number
+  warnings: string[]
+  requires_user_confirmation: boolean
+}
+
+export interface CsvMappingResponse {
+  provider: string
+  file_profile: {
+    filename: string
+    delimiter: string
+    encoding: string
+    sampled_rows: number
+    column_count: number
+    columns: Array<{ name: string; detected_type: string; examples: string[] }>
+  }
+  proposal: CsvMappingProposal
+  warnings: string[]
+  model?: string
+}
+
 export type { AnomaliesData }
 
 export async function getAvailableRucs(): Promise<string[]> {
@@ -142,4 +187,17 @@ export async function getCompanyConfig(ruc: string): Promise<CompanyConfig | nul
 
 export async function getNotasData(ruc: string, periodos: string[]): Promise<NotasData | null> {
   return postBackendJson<NotasData | null>('/notas', { ruc, periodos })
+}
+
+export async function askGrokAnalytics(input: {
+  message: string
+  ruc: string
+  periodos: string[]
+  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>
+}): Promise<AiChatResponse> {
+  return postBackendJson<AiChatResponse>('/ai/chat', input)
+}
+
+export async function suggestCsvMappingAction(formData: FormData): Promise<CsvMappingResponse> {
+  return postBackendForm<CsvMappingResponse>('/ai/csv-mapping', formData)
 }

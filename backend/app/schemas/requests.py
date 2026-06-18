@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -26,3 +26,15 @@ class ComparativoRequest(BaseModel):
 
 class CompanyConfigRequest(BaseModel):
     config: dict[str, Any]
+
+
+class AiConversationMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class AiChatRequest(BaseModel):
+    message: str
+    ruc: str
+    periodos: list[str] = []
+    conversation: list[AiConversationMessage] = []

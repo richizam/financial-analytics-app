@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.router import protected_router, public_router
 from backend.app.core.config import get_settings
+from backend.app.domain.ai import AiAssistantService
 from backend.app.domain.financial import FinancialService
 from backend.app.storage import create_storage
 
@@ -27,7 +28,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.state.financial_service = FinancialService(create_storage(settings))
+    storage = create_storage(settings)
+    app.state.financial_service = FinancialService(storage)
+    app.state.ai_service = AiAssistantService(app.state.financial_service, settings)
     app.include_router(public_router)
     app.include_router(protected_router, prefix=settings.api_prefix)
     return app

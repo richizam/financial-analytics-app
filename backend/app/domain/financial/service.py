@@ -216,6 +216,32 @@ class FinancialService:
         entries = self._entries_for_periods(ruc, sorted(periodos))
         return analyze_anomalies(entries)
 
+    def get_cash_flow_summary(self, ruc: str, periodos: list[str]) -> dict[str, Any]:
+        entries = self._entries_for_periods(ruc, sorted(periodos))
+        cash_in = 0
+        cash_out = 0
+
+        for entry in entries:
+            code = str(entry["codCuenta"])
+            name = str(entry["nombreCuenta"]).lower()
+            is_cash_account = (
+                code.startswith("1.1.1")
+                or "banco" in name
+                or "caja" in name
+                or "efectivo" in name
+            )
+            if not is_cash_account:
+                continue
+            cash_in += int(entry["debe"])
+            cash_out += int(entry["haber"])
+
+        return {
+            "cashIn": cash_in,
+            "cashOut": cash_out,
+            "netCashFlow": cash_in - cash_out,
+            "periodos": sorted(periodos),
+        }
+
     def get_comparativo_data(
         self,
         ruc: str,

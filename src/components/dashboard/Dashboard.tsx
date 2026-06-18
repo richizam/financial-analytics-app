@@ -4,9 +4,10 @@ import { useState, useTransition, useEffect } from 'react'
 import Link from 'next/link'
 import { TrendingUp, DollarSign, Percent, Activity, Download, BookOpen, ShieldAlert, GitCompare, Plus, ArrowLeft, FolderOpen, FileText } from 'lucide-react'
 import { getDashboardData } from '@/app/actions'
-import type { DashboardData } from '@/app/actions'
+import type { AiUiAction, DashboardData } from '@/app/actions'
 import { fmtMoneda, fmtPct, fmtVeces, fmtPeriodo } from '@/lib/format'
 import { exportarExcel } from '@/lib/excel-export'
+import GrokAssistant from '@/components/ai/GrokAssistant'
 import KPICard from '@/components/ui/KPICard'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 import PLBarChart from '@/components/charts/PLBarChart'
@@ -137,6 +138,16 @@ export default function Dashboard({
     reload(selectedRuc, periods)
   }
 
+  function handleAiAction(action: AiUiAction) {
+    const nextRuc = action.ruc && allRucs.includes(action.ruc) ? action.ruc : selectedRuc
+    const available = periodsByRuc[nextRuc] ?? []
+    const nextPeriods = (action.periodos ?? []).filter(period => available.includes(period))
+    if (nextPeriods.length === 0) return
+    setSelectedRuc(nextRuc)
+    setSelectedPeriods(nextPeriods)
+    reload(nextRuc, nextPeriods)
+  }
+
   // ── Derived state ──
   const hasNoPeriods = (periodsByRuc[selectedRuc] ?? []).length === 0
 
@@ -240,6 +251,12 @@ export default function Dashboard({
       {/* ── Main dashboard content ── */}
       {!hasNoPeriods && data && (
         <main className="mx-auto max-w-7xl px-4 py-6 space-y-6">
+          <GrokAssistant
+            ruc={selectedRuc}
+            selectedPeriods={selectedPeriods}
+            onApplyAction={handleAiAction}
+          />
+
           {/* ── KPI Cards ── */}
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KPICard

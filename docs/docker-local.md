@@ -8,6 +8,14 @@ Browser -> Nginx :8080 -> Next.js :3000 -> FastAPI :8000 -> Postgres :5432
 
 Only Nginx is published to the host. FastAPI and Postgres stay private on the Docker network.
 
+The Grok integration also stays server-side:
+
+```text
+Browser -> Next.js Server Action -> FastAPI /api/v1/ai/* -> xAI API
+```
+
+`XAI_API_KEY` must never be exposed as a `NEXT_PUBLIC_*` variable.
+
 ## Local Start
 
 ```bash
@@ -30,6 +38,14 @@ password: demo1234
 ```
 
 The default compose values are intentionally local-only. For VPS or shared environments, copy `.env.docker.example` to `.env` and replace every secret.
+
+If you want to test Grok locally, set these in `.env`:
+
+```bash
+XAI_API_KEY=your-server-side-xai-key
+XAI_BASE_URL=https://api.x.ai/v1
+XAI_MODEL=grok-4.3
+```
 
 ## Optional Seed From Local CSV Files
 
@@ -84,4 +100,5 @@ Expected:
 7. Open only ports `80` and `443` in the firewall.
 8. Do not expose container ports `3000`, `8000`, or `5432`.
 9. Configure Postgres backups and test restore before production data matters.
-10. Run `docker compose up -d` and the smoke tests above.
+10. Add `XAI_API_KEY` only on the server if the AI assistant is enabled.
+11. Run `docker compose up -d` and the smoke tests above.

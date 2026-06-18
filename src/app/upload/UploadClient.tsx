@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { uploadCsvAction } from '@/app/actions'
-import { Upload, CheckCircle, XCircle, Loader2, ArrowLeft } from 'lucide-react'
+import { suggestCsvMappingAction, uploadCsvAction } from '@/app/actions'
+import type { CsvMappingResponse } from '@/app/actions'
+import { Upload, CheckCircle, XCircle, Loader2, ArrowLeft, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
 interface UploadResult { filename: string; ok: boolean; error?: string }
@@ -11,6 +12,9 @@ export default function UploadClient() {
   const [ruc, setRuc]           = useState('')
   const [files, setFiles]       = useState<FileList | null>(null)
   const [results, setResults]   = useState<UploadResult[]>([])
+  const [mapping, setMapping]   = useState<CsvMappingResponse | null>(null)
+  const [mappingError, setMappingError] = useState<string | null>(null)
+  const [mappingLoading, setMappingLoading] = useState(false)
   const [loading, setLoading]   = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -42,9 +46,27 @@ export default function UploadClient() {
     }
   }
 
+  async function handleSuggestMapping() {
+    const file = files?.[0]
+    if (!file) return
+    setMappingLoading(true)
+    setMapping(null)
+    setMappingError(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      setMapping(await suggestCsvMappingAction(fd))
+    } catch (err) {
+      setMappingError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setMappingLoading(false)
+    }
+  }
+
   function handleDrop(e: React.DragEvent) {
     e.preventDefault(); setDragOver(false)
     setFiles(e.dataTransfer.files)
+    setMapping(null)
   }
 
   const completed = results.length
@@ -100,8 +122,60 @@ export default function UploadClient() {
                 </>
               )}
               <input ref={inputRef} type="file" accept=".csv" multiple className="hidden"
-                onChange={e => setFiles(e.target.files)} />
+                onChange={e => { setFiles(e.target.files); setMapping(null) }} />
             </div>
+
+            <button
+              type="button"
+              onClick={handleSuggestMapping}
+              disabled={mappingLoading || !files || files.length === 0}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {mappingLoading
+                ? <><Loader2 size={16} className="animate-spin" /> Analizando formato...</>
+                : <><Sparkles size={16} /> Sugerir mapeo con Grok</>}
+            </button>
+
+            {mapping && (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-blue-950">Mapeo sugerido</p>
+                    <p className="text-xs text-blue-700">
+                      {mapping.provider === 'xai' ? 'Grok reviso' : 'Heuristica reviso'} columnas y ejemplos enmascarados.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-2 py-1 text-xs font-medium text-blue-700">
+                    {Math.round(mapping.proposal.confidence * 100)}%
+                  </span>
+                </div>
+
+                <div className="grid gap-1 text-xs sm:grid-cols-2">
+                  {Object.entries(mapping.proposal.mapping)
+                    .filter(([, source]) => source)
+                    .map(([target, source]) => (
+                      <div key={target} className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1.5">
+                        <span className="font-medium text-gray-600">{target}</span>
+                        <span className="truncate text-gray-900">{source}</span>
+                      </div>
+                    ))}
+                </div>
+
+                {mapping.warnings.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {mapping.warnings.slice(0, 4).map((warning, index) => (
+                      <p key={index} className="text-xs text-blue-800">{warning}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {mappingError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {mappingError}
+              </div>
+            )}
 
             <button
               type="submit"
