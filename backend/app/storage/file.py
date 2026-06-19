@@ -44,6 +44,16 @@ class FileCsvStorage:
             if item.is_file() and re.fullmatch(r"\d{6}\.csv", item.name, re.IGNORECASE)
         )
 
+    def list_files(self, ruc: str) -> list[str]:
+        company_dir = self._company_dir(ruc)
+        if not company_dir.exists():
+            return []
+        return sorted(
+            item.name
+            for item in company_dir.iterdir()
+            if item.is_file() and VALID_FILENAME.fullmatch(item.name)
+        )
+
     def read(self, ruc: str, filename: str) -> str | None:
         path = self._file_path(ruc, filename)
         if not path.exists():

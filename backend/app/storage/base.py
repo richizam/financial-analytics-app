@@ -17,6 +17,9 @@ class CsvStorage(Protocol):
     def list_periods(self, ruc: str) -> list[str]:
         ...
 
+    def list_files(self, ruc: str) -> list[str]:
+        ...
+
     def read(self, ruc: str, filename: str) -> str | None:
         ...
 

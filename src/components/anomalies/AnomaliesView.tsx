@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, AlertTriangle, CheckCircle, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, CheckCircle } from 'lucide-react'
 import { getAnomaliesData } from '@/app/actions'
 import type { AiUiAction, AnomaliesData } from '@/app/actions'
 import { fmtNumero, fmtPeriodo } from '@/lib/format'
@@ -98,29 +98,25 @@ export default function AnomaliesView({
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
 
       {/* ── Header ── */}
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-xs">
-        <div className="mx-auto max-w-7xl px-4 py-3">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 shadow-xs backdrop-blur">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <Link href={dashboardHref} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 transition-colors">
+            <div className="flex items-center gap-2.5">
+              <Link href={dashboardHref} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900">
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Dashboard
               </Link>
-              <div className="h-4 w-px bg-gray-200" />
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white text-xs font-bold">
-                <ShieldAlert className="h-4 w-4" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-gray-900">Detección de Anomalías</h1>
-                <p className="text-xs text-gray-500">{periodoLabel}</p>
-              </div>
+              <span className="h-5 w-px bg-gray-200" />
+              <h1 className="text-base font-semibold text-gray-900">Detección de Anomalías</h1>
               {isPending && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
                   Analizando…
                 </span>
               )}
             </div>
+          </div>
+          <div className="mt-3 border-t border-gray-100 pt-3">
             <PeriodSelector
               ruc={selectedRuc}
               allRucs={allRucs}

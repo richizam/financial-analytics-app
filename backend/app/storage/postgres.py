@@ -65,6 +65,15 @@ class DatabaseCsvStorage:
                     if re.fullmatch(r"\d{6}\.csv", row[0], re.IGNORECASE)
                 ]
 
+    def list_files(self, ruc: str) -> list[str]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT filename FROM "CsvFile" WHERE ruc = %s ORDER BY filename ASC',
+                    (ruc,),
+                )
+                return [row[0] for row in cur.fetchall()]
+
     def read(self, ruc: str, filename: str) -> str | None:
         with self._connect() as conn:
             with conn.cursor() as cur:

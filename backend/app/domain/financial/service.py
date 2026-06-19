@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from .accounting import (
@@ -277,6 +278,48 @@ class FinancialService:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": True}
+
+    def clone_company(
+        self,
+        source_ruc: str,
+        dest_ruc: str,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        source_ruc = (source_ruc or "").strip()
+        dest_ruc = (dest_ruc or "").strip()
+        if not VALID_RUC.fullmatch(source_ruc):
+            return {"ok": False, "error": "RUC origen invalido"}
+        if not VALID_RUC.fullmatch(dest_ruc):
+            return {"ok": False, "error": "RUC destino invalido (debe tener 13 digitos)"}
+        if source_ruc == dest_ruc:
+            return {"ok": False, "error": "El RUC destino debe ser distinto del origen"}
+
+        source_files = [
+            name for name in self.storage.list_files(source_ruc) if name.lower() != "config.json"
+        ]
+        if not source_files:
+            return {"ok": False, "error": "La empresa origen no tiene datos para clonar"}
+        if self.storage.list_files(dest_ruc):
+            return {"ok": False, "error": f"La empresa {dest_ruc} ya existe"}
+
+        try:
+            for filename in source_files:
+                content = self.storage.read(source_ruc, filename)
+                if content is not None:
+                    self.storage.upsert(dest_ruc, filename, content)
+
+            merged: dict[str, Any] = dict(self.get_company_config(source_ruc) or {})
+            if config:
+                merged.update(config)
+            merged["ruc"] = dest_ruc
+            merged.setdefault("isDemo", True)
+            merged.setdefault("createdAt", datetime.now(timezone.utc).isoformat())
+            self.storage.upsert(
+                dest_ruc, "config.json", json.dumps(merged, indent=2, ensure_ascii=False)
+            )
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "ruc": dest_ruc}
 
     def get_company_config(self, ruc: str) -> dict[str, Any] | None:
         if not VALID_RUC.fullmatch(ruc):

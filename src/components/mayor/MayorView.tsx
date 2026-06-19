@@ -5,7 +5,7 @@ import { Download, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { getMayorPageData, getMayorCompletoData } from '@/app/actions'
 import type { AiUiAction, MayorPageData } from '@/app/actions'
-import { fmtNumero, fmtContable, fmtPeriodo } from '@/lib/format'
+import { fmtNumero, fmtContable } from '@/lib/format'
 import { exportarMayor, exportarMayorCompleto } from '@/lib/excel-export'
 import { buildPeriodHref } from '@/lib/period-selection'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
@@ -84,66 +84,58 @@ export default function MayorView({
 
   const { mayor, cuentas, selectedCuenta } = data
 
-  const periodoLabel = selectedPeriods.length === 1
-    ? fmtPeriodo(selectedPeriods[0])
-    : selectedPeriods.length > 1
-    ? `${fmtPeriodo(selectedPeriods[0])} – ${fmtPeriodo(selectedPeriods[selectedPeriods.length - 1])}`
-    : '—'
-
   return (
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
       {/* ── Header ── */}
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-xs">
-        <div className="mx-auto max-w-7xl px-4 py-3">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 shadow-xs backdrop-blur">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <Link
                 href={dashboardHref}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 transition-colors"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Dashboard
               </Link>
-              <div className="h-4 w-px bg-gray-200" />
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white text-xs font-bold">LM</div>
-              <div>
-                <h1 className="text-sm font-bold text-gray-900">Libro Mayor</h1>
-                <p className="text-xs text-gray-500">{periodoLabel}</p>
-              </div>
+              <span className="h-5 w-px bg-gray-200" />
+              <h1 className="text-base font-semibold text-gray-900">Libro Mayor</h1>
               {isPending && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
                   Cargando…
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <PeriodSelector
-                ruc={selectedRuc}
-                allRucs={allRucs}
-                periodsByRuc={periodsByRuc}
-                selectedRuc={selectedRuc}
-                selectedPeriods={selectedPeriods}
-                onRucChange={handleRucChange}
-                onPeriodsChange={handlePeriodsChange}
-              />
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 onClick={handleExportCompleto}
                 disabled={isPending || isPendingCompleto}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs transition-colors hover:bg-gray-50 disabled:opacity-50"
               >
                 <Download className="h-3.5 w-3.5" />
-                {isPendingCompleto ? 'Generando…' : 'Exportar todas las cuentas'}
+                {isPendingCompleto ? 'Generando…' : 'Todas las cuentas'}
               </button>
               <button
                 onClick={handleExport}
                 disabled={isPending || !mayor}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-blue-700 disabled:opacity-50"
               >
                 <Download className="h-3.5 w-3.5" />
                 Exportar cuenta
               </button>
             </div>
+          </div>
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <PeriodSelector
+              ruc={selectedRuc}
+              allRucs={allRucs}
+              periodsByRuc={periodsByRuc}
+              selectedRuc={selectedRuc}
+              selectedPeriods={selectedPeriods}
+              onRucChange={handleRucChange}
+              onPeriodsChange={handlePeriodsChange}
+            />
           </div>
         </div>
       </header>

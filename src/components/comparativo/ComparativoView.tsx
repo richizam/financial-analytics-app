@@ -399,51 +399,34 @@ export default function ComparativoView({
   return (
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-xs">
-        <div className="mx-auto max-w-7xl px-4 py-3">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 shadow-xs backdrop-blur">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <Link href="/" className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors">
-                FA
-              </Link>
-              <div>
-                <h1 className="text-sm font-bold text-gray-900">Comparativo de períodos</h1>
-                <p className="text-xs text-gray-500">{labelA} vs {labelB}</p>
-              </div>
-              {isPending && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                  Actualizando…
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* RUC selector — reuse PeriodSelector but only for RUC change */}
-              <PeriodSelector
-                ruc={selectedRuc}
-                allRucs={allRucs}
-                periodsByRuc={periodsByRuc}
-                selectedRuc={selectedRuc}
-                selectedPeriods={periodosA}
-                onRucChange={handleRucChange}
-                onPeriodsChange={handlePeriodosAChange}
-              />
+            <div className="flex items-center gap-2.5">
               <Link
                 href={dashboardHref}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition-colors"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Dashboard
               </Link>
-              <button
-                onClick={handleExport}
-                disabled={isPending || !data}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Exportar Excel
-              </button>
+              <span className="h-5 w-px bg-gray-200" />
+              <h1 className="text-base font-semibold text-gray-900">Comparativo de períodos</h1>
+              {isPending && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+                  Actualizando…
+                </span>
+              )}
             </div>
+            <button
+              onClick={handleExport}
+              disabled={isPending || !data}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Exportar Excel
+            </button>
           </div>
         </div>
       </header>

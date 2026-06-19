@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 
 from backend.app.api.dependencies import get_financial_service
 from backend.app.domain.financial import FinancialService
-from backend.app.schemas.requests import CompanyConfigRequest
+from backend.app.schemas.requests import CompanyCloneRequest, CompanyConfigRequest
 
 
 router = APIRouter(tags=["company"])
@@ -26,3 +26,11 @@ def get_company_config(
     service: FinancialService = Depends(get_financial_service),
 ) -> dict[str, Any] | None:
     return service.get_company_config(ruc)
+
+
+@router.post("/companies/clone")
+def clone_company(
+    request: CompanyCloneRequest,
+    service: FinancialService = Depends(get_financial_service),
+) -> dict[str, Any]:
+    return service.clone_company(request.sourceRuc, request.destRuc, request.config)

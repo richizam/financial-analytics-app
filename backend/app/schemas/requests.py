@@ -28,6 +28,12 @@ class CompanyConfigRequest(BaseModel):
     config: dict[str, Any]
 
 
+class CompanyCloneRequest(BaseModel):
+    sourceRuc: str
+    destRuc: str
+    config: dict[str, Any] | None = None
+
+
 class AiConversationMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str

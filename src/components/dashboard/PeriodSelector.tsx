@@ -26,11 +26,9 @@ function quarterPeriods(periods: string[], year: string, q: 1 | 2 | 3 | 4): stri
 }
 
 export default function PeriodSelector({
-  allRucs,
   periodsByRuc,
   selectedRuc,
   selectedPeriods,
-  onRucChange,
   onPeriodsChange,
 }: PeriodSelectorProps) {
   const available = periodsByRuc[selectedRuc] ?? []
@@ -66,34 +64,17 @@ export default function PeriodSelector({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {/* RUC */}
-      <div className="flex items-center gap-2">
-        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">RUC</label>
-        <select
-          value={selectedRuc}
-          onChange={e => onRucChange(e.target.value)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-        >
-          {allRucs.map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
-      </div>
-
       {/* Año */}
-      <div className="flex items-center gap-1">
+      <select
+        value={activeYear}
+        onChange={e => setYear(e.target.value)}
+        aria-label="Año"
+        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-xs transition-colors hover:border-gray-300 focus:border-blue-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+      >
         {years.map(y => (
-          <button
-            key={y}
-            onClick={() => setYear(y)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              y === activeYear
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {y}
-          </button>
+          <option key={y} value={y}>{y}</option>
         ))}
-      </div>
+      </select>
 
       {/* Presets rápidos */}
       <div className="flex items-center gap-1">
