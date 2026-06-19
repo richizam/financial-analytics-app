@@ -14,7 +14,7 @@ export default async function Home({ searchParams }: { searchParams?: PeriodSear
   if (rucs.length === 0) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="rounded-xl border border-gray-200 bg-white p-10 text-center shadow-sm max-w-md">
+        <div className="rounded-xl border border-gray-200 bg-white p-10 text-center shadow-xs max-w-md">
           <div className="mb-4 text-4xl">📊</div>
           <p className="text-base font-semibold text-gray-800">No hay empresas cargadas aún</p>
           <p className="mt-2 text-sm text-gray-500">

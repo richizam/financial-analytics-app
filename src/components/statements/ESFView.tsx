@@ -94,7 +94,7 @@ export default function ESFView({ esf, utilidadNeta, ptEnAsientos, irEnAsientos,
               <td className="py-1.5 pl-8 pr-2 text-sm text-gray-500">
                 <span className="font-mono text-xs text-gray-400 mr-2">2.1.5.01</span>
                 Participación trabajadores por pagar
-                <span className="ml-2 inline-flex items-center text-xs font-medium bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">Estimado</span>
+                <span className="ml-2 inline-flex items-center text-xs font-medium bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-sm">Estimado</span>
               </td>
               <td className="py-1.5 pr-4 text-right font-mono text-sm tabular-nums text-gray-900">
                 {fmtContable(pt)}
@@ -106,7 +106,7 @@ export default function ESFView({ esf, utilidadNeta, ptEnAsientos, irEnAsientos,
               <td className="py-1.5 pl-8 pr-2 text-sm text-gray-500">
                 <span className="font-mono text-xs text-gray-400 mr-2">2.1.5.02</span>
                 Impuesto a la renta por pagar
-                <span className="ml-2 inline-flex items-center text-xs font-medium bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">Estimado</span>
+                <span className="ml-2 inline-flex items-center text-xs font-medium bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-sm">Estimado</span>
               </td>
               <td className="py-1.5 pr-4 text-right font-mono text-sm tabular-nums text-gray-900">
                 {fmtContable(ir)}

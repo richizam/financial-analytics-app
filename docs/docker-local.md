@@ -45,6 +45,7 @@ If you want to test Grok locally, set these in `.env`:
 XAI_API_KEY=your-server-side-xai-key
 XAI_BASE_URL=https://api.x.ai/v1
 XAI_MODEL=grok-4.3
+XAI_REASONING_EFFORT=medium
 ```
 
 ## Optional Seed From Local CSV Files

@@ -44,7 +44,7 @@ function WelcomeScreen({
 }) {
   return (
     <main className="mx-auto max-w-2xl px-4 py-16">
-      <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm text-center">
+      <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-xs text-center">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
           <FolderOpen className="h-7 w-7" />
         </div>
@@ -72,14 +72,14 @@ function WelcomeScreen({
               <span className="text-gray-400 ml-2">← apertura del año</span></p>
           </div>
           <p className="mt-3 text-xs text-gray-500">
-            Columnas: <code className="rounded bg-gray-200 px-1">fecha · asiento · tipo · codCuenta · nombreCuenta · descripcion · debe · haber</code>
+            Columnas: <code className="rounded-sm bg-gray-200 px-1">fecha · asiento · tipo · codCuenta · nombreCuenta · descripcion · debe · haber</code>
           </p>
         </div>
 
         {fallbackRuc && fallbackName && (
           <button
             onClick={onGoBack}
-            className="mt-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+            className="mt-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Volver a {fallbackName}
@@ -165,7 +165,7 @@ export default function Dashboard({
   return (
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
       {/* ── Header ── */}
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-xs">
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -194,34 +194,34 @@ export default function Dashboard({
               <Link
                 href="/setup"
                 title="Nueva empresa"
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white text-gray-500 shadow-sm hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white text-gray-500 shadow-xs hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
               >
                 <Plus className="h-3.5 w-3.5" />
               </Link>
               <Link
                 href={periodHref('/comparativo')}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition-colors"
               >
                 <GitCompare className="h-3.5 w-3.5" />
                 Comparativo
               </Link>
               <Link
                 href={periodHref('/anomalies')}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition-colors"
               >
                 <ShieldAlert className="h-3.5 w-3.5" />
                 Anomalías
               </Link>
               <Link
                 href={periodHref('/mayor')}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition-colors"
               >
                 <BookOpen className="h-3.5 w-3.5" />
                 Libro Mayor
               </Link>
               <Link
                 href={periodHref('/notas')}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition-colors"
               >
                 <FileText className="h-3.5 w-3.5" />
                 Notas NIIF
@@ -229,7 +229,7 @@ export default function Dashboard({
               <button
                 onClick={() => data && exportarExcel(selectedRuc, selectedPeriods, data.eri, data.esf, data.metricas)}
                 disabled={isPending || hasNoPeriods || !data}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" />
                 Exportar Excel
@@ -289,7 +289,7 @@ export default function Dashboard({
           </section>
 
           {/* ── Gráfico P&L mensual ── */}
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-xs">
             <h2 className="mb-4 text-sm font-semibold text-gray-700">
               Ingresos · Costo de ventas · Utilidad bruta — por mes
             </h2>
@@ -300,7 +300,7 @@ export default function Dashboard({
           </section>
 
           {/* ── Estados financieros en pestañas ── */}
-          <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
+          <section className="rounded-xl border border-gray-200 bg-white shadow-xs">
             <div className="flex border-b border-gray-200">
               {([
                 { id: 'eri' as TabId, label: 'Estado de Resultados (ERI)' },

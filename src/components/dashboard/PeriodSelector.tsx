@@ -72,7 +72,7 @@ export default function PeriodSelector({
         <select
           value={selectedRuc}
           onChange={e => onRucChange(e.target.value)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
         >
           {allRucs.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
@@ -86,7 +86,7 @@ export default function PeriodSelector({
             onClick={() => setYear(y)}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               y === activeYear
-                ? 'bg-blue-600 text-white shadow-sm'
+                ? 'bg-blue-600 text-white shadow-xs'
                 : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
             }`}
           >
@@ -143,7 +143,7 @@ export default function PeriodSelector({
               onClick={() => available_ && toggleMonth(p)}
               className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
                 selected && available_
-                  ? 'bg-blue-600 text-white shadow-sm'
+                  ? 'bg-blue-600 text-white shadow-xs'
                   : available_
                   ? 'bg-white border border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300'
                   : 'cursor-not-allowed opacity-25 bg-gray-50 text-gray-400'

@@ -214,7 +214,7 @@ export default function RatiosTable({
   diasPeriodo: number
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white shadow-xs">
       <table className="w-full">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">

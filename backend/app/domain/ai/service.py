@@ -71,6 +71,8 @@ DEFAULT_COMPARISON_METRICS = [
     "net_profit",
     "ebitda",
 ]
+CONVERSATION_CONTEXT_LIMIT = 10
+CONVERSATION_SUMMARY_MAX_CHARS = 2400
 
 
 class AiAssistantService:
@@ -85,7 +87,14 @@ class AiAssistantService:
         self.xai_client = xai_client or XaiClient(settings)
         self.tools = AiToolExecutor(financial_service)
 
-    def chat(self, message: str, ruc: str, periodos: list[str], conversation: list[dict[str, Any]]) -> dict[str, Any]:
+    def chat(
+        self,
+        message: str,
+        ruc: str,
+        periodos: list[str],
+        conversation: list[dict[str, Any]],
+        conversation_summary: str | None = None,
+    ) -> dict[str, Any]:
         clean_message = message.strip()
         if not clean_message:
             raise AiToolValidationError("message is required")
@@ -97,7 +106,7 @@ class AiAssistantService:
 
         executed_results: list[dict[str, Any]] = []
         try:
-            messages = self._initial_input(clean_message, context, conversation)
+            messages = self._initial_input(clean_message, context, conversation, conversation_summary)
             response = self.xai_client.create_chat_completion(
                 messages,
                 tools=self.tools.definitions(context),
@@ -144,7 +153,12 @@ class AiAssistantService:
         if not message_text:
             message_text = "No pude generar una explicacion, pero el backend si proceso la solicitud."
 
-        ui_action = self._first_ui_action(executed_results)
+        # Navigation only when the model explicitly used renderDashboard
+        # (source="frontend_instruction"). Data/analysis tools ground the answer
+        # but must not move the dashboard when the user merely asked a question.
+        ui_action = self._first_ui_action(
+            [result for result in executed_results if result.get("source") == "frontend_instruction"]
+        )
         citations = [
             {
                 "type": "metric_result" if result.get("source") == "calculated_by_backend" else "tool_result",
@@ -851,6 +865,7 @@ class AiAssistantService:
         message: str,
         context: AiContext,
         conversation: list[dict[str, Any]],
+        conversation_summary: str | None = None,
     ) -> list[dict[str, Any]]:
         context_payload = {
             "selected_client_id": context.selected_ruc,
@@ -870,7 +885,21 @@ class AiAssistantService:
                 ),
             },
         ]
-        for item in conversation[-6:]:
+        summary = self._conversation_summary(conversation_summary)
+        if summary:
+            input_items.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Resumen visible de la conversacion anterior. "
+                        "Usalo solo como memoria conversacional cuando ayude a entender referencias "
+                        "como esto/eso/anterior; no digas que viene de memoria interna.\n"
+                        f"{summary}"
+                    ),
+                }
+            )
+
+        for item in conversation[-CONVERSATION_CONTEXT_LIMIT:]:
             role = item.get("role")
             content = str(item.get("content") or "")[:2000]
             if role in {"user", "assistant"} and content:
@@ -880,6 +909,11 @@ class AiAssistantService:
                 input_items.append({"role": role, "content": content})
         input_items.append({"role": "user", "content": message})
         return input_items
+
+    def _conversation_summary(self, conversation_summary: str | None) -> str:
+        if not conversation_summary:
+            return ""
+        return re.sub(r"\s+", " ", conversation_summary).strip()[:CONVERSATION_SUMMARY_MAX_CHARS]
 
     def _visible_conversation_context(self, item: dict[str, Any]) -> str:
         action = item.get("ui_action") if isinstance(item.get("ui_action"), dict) else None

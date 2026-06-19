@@ -26,6 +26,9 @@ def _csv_env(name: str, default: str) -> list[str]:
     return [part.strip() for part in os.getenv(name, default).split(",") if part.strip()]
 
 
+XAI_REASONING_EFFORTS = {"none", "low", "medium", "high"}
+
+
 @dataclass(frozen=True)
 class Settings:
     app_env: str = os.getenv("APP_ENV", os.getenv("NODE_ENV", "local")).lower()
@@ -49,6 +52,7 @@ class Settings:
     xai_api_key: str | None = os.getenv("XAI_API_KEY")
     xai_base_url: str = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1").strip()
     xai_model: str = os.getenv("XAI_MODEL", "grok-4.3").strip()
+    xai_reasoning_effort: str = os.getenv("XAI_REASONING_EFFORT", "medium").strip().lower()
     xai_timeout_seconds: float = float(os.getenv("XAI_TIMEOUT_SECONDS", "45"))
 
     @property
@@ -74,6 +78,8 @@ class Settings:
             raise RuntimeError("XAI_BASE_URL cannot be empty")
         if not self.xai_model:
             raise RuntimeError("XAI_MODEL cannot be empty")
+        if self.xai_reasoning_effort not in XAI_REASONING_EFFORTS:
+            raise RuntimeError("XAI_REASONING_EFFORT must be none, low, medium, or high")
 
 
 @lru_cache(maxsize=1)

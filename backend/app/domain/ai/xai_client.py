@@ -28,6 +28,7 @@ class XaiClient:
         self.api_key = settings.xai_api_key
         self.base_url = _normalize_base_url(settings.xai_base_url)
         self.model = settings.xai_model
+        self.reasoning_effort = settings.xai_reasoning_effort
         self.timeout_seconds = settings.xai_timeout_seconds
 
     @property
@@ -51,6 +52,7 @@ class XaiClient:
             "input": input_items,
             "store": False,
             "temperature": 0.2,
+            "reasoning": {"effort": self.reasoning_effort},
         }
         if tools:
             body["tools"] = tools
@@ -96,6 +98,7 @@ class XaiClient:
             "model": self.model,
             "messages": messages,
             "temperature": 0.2,
+            "reasoning_effort": self.reasoning_effort,
         }
         if tools:
             body["tools"] = [

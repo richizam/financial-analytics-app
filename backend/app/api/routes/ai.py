@@ -28,6 +28,7 @@ def chat(
                 item.model_dump() if hasattr(item, "model_dump") else item.dict()
                 for item in request.conversation
             ],
+            request.conversation_summary,
         )
     except AiToolValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

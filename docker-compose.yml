@@ -28,6 +28,7 @@ services:
       XAI_API_KEY: ${XAI_API_KEY:-}
       XAI_BASE_URL: ${XAI_BASE_URL:-https://api.x.ai/v1}
       XAI_MODEL: ${XAI_MODEL:-grok-4.3}
+      XAI_REASONING_EFFORT: ${XAI_REASONING_EFFORT:-medium}
       XAI_TIMEOUT_SECONDS: ${XAI_TIMEOUT_SECONDS:-45}
     depends_on:
       postgres:

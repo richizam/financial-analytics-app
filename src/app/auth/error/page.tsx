@@ -21,7 +21,7 @@ function ErrorContent() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md rounded-2xl border border-red-100 bg-white p-10 text-center shadow-sm">
+      <div className="w-full max-w-md rounded-2xl border border-red-100 bg-white p-10 text-center shadow-xs">
         <div className="mb-4 flex justify-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
             <svg className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

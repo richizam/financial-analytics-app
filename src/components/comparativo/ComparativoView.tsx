@@ -142,7 +142,7 @@ function KPICompare({
   const txtColor = varColor(clave, dir)
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs">
       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{titulo}</p>
       <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3">
         <div className="min-w-0">
@@ -399,7 +399,7 @@ export default function ComparativoView({
   return (
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-xs">
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -430,7 +430,7 @@ export default function ComparativoView({
               />
               <Link
                 href={dashboardHref}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition-colors"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Dashboard
@@ -438,7 +438,7 @@ export default function ComparativoView({
               <button
                 onClick={handleExport}
                 disabled={isPending || !data}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" />
                 Exportar Excel
@@ -480,7 +480,7 @@ export default function ComparativoView({
         </section>
 
         {!data ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+          <div className="rounded-xl border border-gray-200 bg-white p-10 text-center shadow-xs">
             <p className="text-sm text-gray-500">Selecciona dos períodos para comparar</p>
           </div>
         ) : (
@@ -525,7 +525,7 @@ export default function ComparativoView({
             </section>
 
             {/* ERI comparison */}
-            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-xs">
               <h2 className="mb-4 text-sm font-semibold text-gray-700">
                 Estado de Resultados — {labelA} vs {labelB}
               </h2>
@@ -533,7 +533,7 @@ export default function ComparativoView({
             </section>
 
             {/* Ratios comparison */}
-            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-xs">
               <h2 className="mb-4 text-sm font-semibold text-gray-700">
                 Ratios financieros — {labelA} vs {labelB}
               </h2>

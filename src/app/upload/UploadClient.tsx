@@ -79,7 +79,7 @@ export default function UploadClient() {
           <ArrowLeft size={14} /> Volver al dashboard
         </Link>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-xs">
           <h1 className="mb-1 text-lg font-semibold text-gray-900">Cargar archivos CSV</h1>
           <p className="mb-6 text-sm text-gray-500">
             Sube los archivos de asientos por período (<code>YYYYMM.csv</code>) y
@@ -97,7 +97,7 @@ export default function UploadClient() {
                 maxLength={13}
                 required
                 pattern="\d{13}"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
               />
             </div>
 
@@ -154,7 +154,7 @@ export default function UploadClient() {
                   {Object.entries(mapping.proposal.mapping)
                     .filter(([, source]) => source)
                     .map(([target, source]) => (
-                      <div key={target} className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1.5">
+                      <div key={target} className="flex items-center justify-between gap-2 rounded-sm bg-white px-2 py-1.5">
                         <span className="font-medium text-gray-600">{target}</span>
                         <span className="truncate text-gray-900">{source}</span>
                       </div>
@@ -218,7 +218,7 @@ export default function UploadClient() {
             <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600">
               Ver formato esperado del CSV
             </summary>
-            <div className="mt-2 overflow-x-auto rounded border border-gray-100 bg-gray-50 p-3">
+            <div className="mt-2 overflow-x-auto rounded-sm border border-gray-100 bg-gray-50 p-3">
               <code className="block whitespace-pre text-xs text-gray-700">
 {`fecha,asiento,tipo,codCuenta,nombreCuenta,descripcion,debe,haber,centroCosto
 2025-01-05,AJ-202501-001,VT,4.1.1.01,Ventas,Factura 001,0.00,1500.00,VENTAS

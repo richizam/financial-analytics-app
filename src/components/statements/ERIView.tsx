@@ -117,7 +117,7 @@ export default function ERIView({ eri }: { eri: ERI }) {
             <td className={`py-1.5 pl-10 pr-2 text-sm text-gray-600`}>
               (-) Participación trabajadores 15%
               {!eri.ptEnAsientos && (
-                <span className="ml-2 text-xs font-medium bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">Estimado</span>
+                <span className="ml-2 text-xs font-medium bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-sm">Estimado</span>
               )}
             </td>
             <td className={`py-1.5 pr-4 text-right font-mono text-sm tabular-nums ${eri.participacionTrabajadores > 0 ? 'text-red-500' : 'text-gray-900'}`}>
@@ -134,7 +134,7 @@ export default function ERIView({ eri }: { eri: ERI }) {
             <td className="py-1.5 pl-10 pr-2 text-sm text-gray-600">
               (-) Impuesto a la Renta 25%
               {!eri.irEnAsientos && (
-                <span className="ml-2 text-xs font-medium bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">Estimado</span>
+                <span className="ml-2 text-xs font-medium bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-sm">Estimado</span>
               )}
             </td>
             <td className={`py-1.5 pr-4 text-right font-mono text-sm tabular-nums ${eri.impuestoRenta > 0 ? 'text-red-500' : 'text-gray-900'}`}>

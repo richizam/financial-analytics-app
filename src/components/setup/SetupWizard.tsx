@@ -148,7 +148,7 @@ function Input({
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+        className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors ${
           error ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white hover:border-gray-400'
         }`}
       />
@@ -169,7 +169,7 @@ function Select({
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+        className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors ${
           error ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white hover:border-gray-400'
         }`}
       >
@@ -195,7 +195,7 @@ function Toggle({
         onClick={() => onChange(!checked)}
         className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? 'bg-blue-600' : 'bg-gray-200'}`}
       >
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </button>
       <span>
         <span className="text-sm font-medium text-gray-700">{label}</span>
@@ -438,7 +438,7 @@ function Step5({ form, update }: { form: Form; update: (p: Partial<Form>) => voi
         <select
           value={form.mesInicioEjercicio}
           onChange={e => update({ mesInicioEjercicio: parseInt(e.target.value) })}
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
         >
           {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
         </select>
@@ -479,7 +479,7 @@ function Step6({ form, update, errors }: { form: Form; update: (p: Partial<Form>
             <p className="pl-4">└── <span className="text-blue-600">config.json</span>  <span className="text-gray-400">← esta configuración</span></p>
           </div>
           <p className="text-xs text-gray-500 pt-1">
-            Columnas del diario: <code className="bg-gray-200 rounded px-1">fecha, asiento, tipo, codCuenta, nombreCuenta, descripcion, debe, haber</code>
+            Columnas del diario: <code className="bg-gray-200 rounded-sm px-1">fecha, asiento, tipo, codCuenta, nombreCuenta, descripcion, debe, haber</code>
           </p>
         </div>
       )}
@@ -692,7 +692,7 @@ export default function SetupWizard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white shadow-sm">
+      <header className="border-b border-gray-200 bg-white shadow-xs">
         <div className="mx-auto max-w-2xl px-4 py-3 flex items-center gap-3">
           <Link href="/" className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors">
             FA
@@ -719,7 +719,7 @@ export default function SetupWizard() {
       <main className="mx-auto max-w-2xl px-4 py-8">
         <Stepper current={step} />
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xs">
           {/* Step header */}
           <div className="mb-6">
             <h2 className="text-lg font-bold text-gray-900">{title}</h2>
@@ -759,7 +759,7 @@ export default function SetupWizard() {
               <button
                 type="button"
                 onClick={goNext}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-xs"
               >
                 Siguiente
                 <ChevronRight className="h-4 w-4" />
@@ -769,7 +769,7 @@ export default function SetupWizard() {
                 type="button"
                 onClick={handleSubmit}
                 disabled={saving}
-                className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
+                className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-xs"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {saving ? 'Guardando…' : 'Crear empresa'}

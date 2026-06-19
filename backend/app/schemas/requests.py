@@ -40,3 +40,4 @@ class AiChatRequest(BaseModel):
     ruc: str
     periodos: list[str] = []
     conversation: list[AiConversationMessage] = []
+    conversation_summary: str | None = None

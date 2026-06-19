@@ -28,7 +28,7 @@ const estadoIconBg: Record<Estado, string> = {
 
 export default function KPICard({ titulo, valor, subtitulo, estado = 'gray', Icon }: KPICardProps) {
   return (
-    <div className={`bg-white rounded-xl border border-gray-200 border-l-4 ${estadoBorder[estado]} p-5 shadow-sm`}>
+    <div className={`bg-white rounded-xl border border-gray-200 border-l-4 ${estadoBorder[estado]} p-5 shadow-xs`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide truncate">{titulo}</p>

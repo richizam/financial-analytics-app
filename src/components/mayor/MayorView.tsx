@@ -93,7 +93,7 @@ export default function MayorView({
   return (
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
       {/* ── Header ── */}
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-xs">
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -130,7 +130,7 @@ export default function MayorView({
               <button
                 onClick={handleExportCompleto}
                 disabled={isPending || isPendingCompleto}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" />
                 {isPendingCompleto ? 'Generando…' : 'Exportar todas las cuentas'}
@@ -138,7 +138,7 @@ export default function MayorView({
               <button
                 onClick={handleExport}
                 disabled={isPending || !mayor}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" />
                 Exportar cuenta
@@ -156,7 +156,7 @@ export default function MayorView({
             value={selectedCuenta ?? ''}
             onChange={e => handleCuentaChange(e.target.value)}
             disabled={isPending || cuentas.length === 0}
-            className="flex-1 max-w-lg rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            className="flex-1 max-w-lg rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 shadow-xs focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
           >
             {cuentas.map(c => (
               <option key={c.codCuenta} value={c.codCuenta}>
@@ -171,7 +171,7 @@ export default function MayorView({
 
         {/* ── Tabla del Mayor ── */}
         {mayor ? (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-xs overflow-hidden">
             <div className="border-b border-gray-100 px-5 py-3 bg-gray-50">
               <h2 className="text-sm font-semibold text-gray-900">
                 <span className="font-mono text-gray-400 mr-2">{mayor.codCuenta}</span>
@@ -260,7 +260,7 @@ export default function MayorView({
             </div>
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 bg-white p-16 text-center text-sm text-gray-400 shadow-sm">
+          <div className="rounded-xl border border-gray-200 bg-white p-16 text-center text-sm text-gray-400 shadow-xs">
             Selecciona un período y una cuenta para ver el mayor
           </div>
         )}

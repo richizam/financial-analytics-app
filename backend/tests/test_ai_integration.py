@@ -284,6 +284,35 @@ def test_follow_up_includes_visible_comparison_action_context():
     assert xai.messages[-1] == {"role": "user", "content": "Que significa esto?"}
 
 
+def test_chat_context_includes_memory_summary_and_last_ten_messages():
+    xai = CapturingXaiClient()
+    ai = AiAssistantService(service_with_data(), Settings(), xai)
+    conversation = [{"role": "user", "content": f"mensaje {index}"} for index in range(12)]
+
+    result = ai.chat(
+        "Que hicimos antes?",
+        "0990123456001",
+        ["202501"],
+        conversation,
+        "Usuario pidio analizar margen anual y luego abrir comparativo.",
+    )
+
+    assert result["provider"] == "xai"
+    assert any(
+        item["role"] == "system"
+        and "Resumen visible de la conversacion anterior" in item["content"]
+        and "margen anual" in item["content"]
+        for item in xai.messages
+    )
+    history_messages = [
+        item["content"]
+        for item in xai.messages
+        if item["role"] == "user" and item["content"].startswith("mensaje ")
+    ]
+    assert history_messages == [f"mensaje {index}" for index in range(2, 12)]
+    assert xai.messages[-1] == {"role": "user", "content": "Que hicimos antes?"}
+
+
 def test_main_dashboard_intent_returns_home_action_for_requested_year():
     ai = AiAssistantService(service_with_data(), Settings(), FailingXaiClient())
 
@@ -603,3 +632,56 @@ def test_navigation_commands_still_use_local_intent_after_explanatory_guard():
 
     assert result["provider"] == "local-intent"
     assert result["ui_action"]["href"] == "/anomalies"
+
+
+class ScriptedXaiClient:
+    model = "test"
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = 0
+
+    @property
+    def configured(self) -> bool:
+        return True
+
+    def create_chat_completion(self, *args, **kwargs):
+        response = self.responses[min(self.calls, len(self.responses) - 1)]
+        self.calls += 1
+        return response
+
+
+def _tool_call(name, arguments):
+    return {"choices": [{"message": {"content": None, "tool_calls": [{"id": "c1", "function": {"name": name, "arguments": arguments}}]}}]}
+
+
+def test_data_question_grounds_answer_without_navigating():
+    # The model calls a data tool to answer a question; the dashboard must NOT move.
+    args = '{"clientId":"0990123456001","startDate":"2025-01-01","endDate":"2025-01-31","metrics":["net_profit"]}'
+    scripted = ScriptedXaiClient([
+        _tool_call("getFinancialSummary", args),
+        {"choices": [{"message": {"content": "Tu utilidad neta fue 63.75 USD."}}]},
+    ])
+    ai = AiAssistantService(service_with_data(), Settings(), scripted)
+
+    result = ai.chat("¿cuál fue mi utilidad neta en enero 2025?", "0990123456001", ["202501"], [])
+
+    assert result["provider"] == "xai"
+    assert "getFinancialSummary" in result["executed_tools"]
+    assert result["ui_action"] is None  # a data answer must not move the dashboard
+
+
+def test_explicit_render_dashboard_still_navigates():
+    # When the model explicitly opens a view (renderDashboard), navigation is returned.
+    args = '{"clientId":"0990123456001","dashboardType":"financial_summary","filters":{"startDate":"2025-01-01","endDate":"2025-01-31"}}'
+    scripted = ScriptedXaiClient([
+        _tool_call("renderDashboard", args),
+        {"choices": [{"message": {"content": "Abriendo el dashboard principal."}}]},
+    ])
+    ai = AiAssistantService(service_with_data(), Settings(), scripted)
+
+    result = ai.chat("ábreme algo", "0990123456001", ["202501"], [])
+
+    assert result["provider"] == "xai"
+    assert result["ui_action"] is not None
+    assert result["ui_action"]["href"] == "/"

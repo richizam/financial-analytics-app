@@ -29,7 +29,7 @@ const NIVEL_STYLES = {
 
 function SectionCard({ title, children, badge }: { title: string; children: React.ReactNode; badge?: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <section className="rounded-xl border border-gray-200 bg-white shadow-xs overflow-hidden">
       <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3 bg-gray-50">
         <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
         {badge}
@@ -98,7 +98,7 @@ export default function AnomaliesView({
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
 
       {/* ── Header ── */}
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-xs">
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -136,7 +136,7 @@ export default function AnomaliesView({
 
       <main className="mx-auto max-w-7xl px-4 py-6 space-y-6">
         {!data ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-16 text-center text-sm text-gray-400 shadow-sm">
+          <div className="rounded-xl border border-gray-200 bg-white p-16 text-center text-sm text-gray-400 shadow-xs">
             Selecciona un período para analizar
           </div>
         ) : (
@@ -145,7 +145,7 @@ export default function AnomaliesView({
             {(() => {
               const s = NIVEL_STYLES[data.riskScore.nivel]
               return (
-                <section className={`rounded-xl border ${s.border} ${s.bg} p-6 shadow-sm`}>
+                <section className={`rounded-xl border ${s.border} ${s.bg} p-6 shadow-xs`}>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-4">
                       <div className={`text-5xl font-black tabular-nums ${s.score}`}>

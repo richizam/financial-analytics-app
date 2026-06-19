@@ -201,6 +201,7 @@ export async function askGrokAnalytics(input: {
     ui_action?: AiUiAction | null
     executed_tools?: string[]
   }>
+  conversation_summary?: string
 }): Promise<AiChatResponse> {
   return postBackendJson<AiChatResponse>('/ai/chat', input)
 }

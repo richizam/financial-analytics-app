@@ -511,7 +511,7 @@ export default function NotasView({
   return (
     <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
       {/* Barra superior — se oculta al imprimir */}
-      <header className="print:hidden sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 shadow-sm">
+      <header className="print:hidden sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 shadow-xs">
         <div className="mx-auto flex max-w-5xl items-center gap-4 flex-wrap">
           <Link
             href={dashboardHref}
@@ -536,7 +536,7 @@ export default function NotasView({
             <span className="text-xs text-gray-400">{label}</span>
             <button
               onClick={() => window.print()}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-xs hover:bg-blue-700 transition-colors"
             >
               <Printer size={15} />
               Imprimir / PDF
@@ -553,7 +553,7 @@ export default function NotasView({
           <p className="text-sm text-gray-500 mt-0.5">{empresa} · {label}</p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white px-10 py-12 shadow-sm print:shadow-none print:border-none print:rounded-none print:px-0 print:py-0">
+        <div className="rounded-2xl border border-gray-200 bg-white px-10 py-12 shadow-xs print:shadow-none print:border-none print:rounded-none print:px-0 print:py-0">
           {data ? (
             <NotasDocumento data={data} />
           ) : (
