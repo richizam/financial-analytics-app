@@ -31,6 +31,8 @@ class CompanyConfigRequest(BaseModel):
 class AiConversationMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
+    ui_action: dict[str, Any] | None = None
+    executed_tools: list[str] = []
 
 
 class AiChatRequest(BaseModel):

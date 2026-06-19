@@ -195,7 +195,12 @@ export async function askGrokAnalytics(input: {
   message: string
   ruc: string
   periodos: string[]
-  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>
+  conversation?: Array<{
+    role: 'user' | 'assistant'
+    content: string
+    ui_action?: AiUiAction | null
+    executed_tools?: string[]
+  }>
 }): Promise<AiChatResponse> {
   return postBackendJson<AiChatResponse>('/ai/chat', input)
 }

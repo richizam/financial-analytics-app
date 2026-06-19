@@ -181,6 +181,21 @@ class PassiveXaiClient:
         return {"choices": [{"message": {"content": "respuesta del modelo"}}]}
 
 
+class CapturingXaiClient:
+    model = "test"
+
+    def __init__(self) -> None:
+        self.messages: list[dict[str, str]] = []
+
+    @property
+    def configured(self) -> bool:
+        return True
+
+    def create_chat_completion(self, messages, *args, **kwargs):
+        self.messages = messages
+        return {"choices": [{"message": {"content": "Se refiere al resultado de anomalias mostrado antes."}}]}
+
+
 def test_anomaly_intent_is_local_and_returns_ui_action():
     ai = AiAssistantService(service_with_data(), Settings(), FailingXaiClient())
 
@@ -201,6 +216,72 @@ def test_anomaly_intent_uses_year_from_message_over_selected_period():
     assert result["executed_tools"] == ["getAnomalies"]
     assert result["ui_action"]["href"] == "/anomalies"
     assert result["ui_action"]["periodos"] == ["202501"]
+
+
+def test_follow_up_question_is_sent_as_chat_not_backend_context():
+    xai = CapturingXaiClient()
+    ai = AiAssistantService(service_with_data(), Settings(), xai)
+    conversation = [
+        {"role": "user", "content": "Que anomalias hubo en 2025?"},
+        {
+            "role": "assistant",
+            "content": (
+                "Listo. Te muestro la pantalla de Anomalias para Ene 2025. "
+                "Riesgo yellow, score 52/100, 0 grupos duplicados y 2 outliers sobre 4 asientos."
+            ),
+        },
+    ]
+
+    result = ai.chat("Que significa esto?", "0990123456001", ["202501"], conversation)
+
+    assert result["provider"] == "xai"
+    assert result["message"] == "Se refiere al resultado de anomalias mostrado antes."
+    assert xai.messages[-1] == {"role": "user", "content": "Que significa esto?"}
+    assert "selected_client_id" not in xai.messages[-1]["content"]
+    assert any(
+        item["role"] == "assistant" and "Riesgo yellow" in item["content"]
+        for item in xai.messages
+    )
+    assert any(
+        item["role"] == "system" and "selected_client_id" in item["content"]
+        for item in xai.messages
+    )
+
+
+def test_follow_up_includes_visible_comparison_action_context():
+    xai = CapturingXaiClient()
+    ai = AiAssistantService(service_with_periods(period_range("202601", "202606")), Settings(), xai)
+    conversation = [
+        {"role": "user", "content": "Compara Q1 vs Q2 de 2026"},
+        {
+            "role": "assistant",
+            "content": "Listo. Abro Comparativo para Ene 2026 - Mar 2026 vs Abr 2026 - Jun 2026.",
+            "ui_action": {
+                "type": "render_dashboard",
+                "dashboard_id": "variance_analysis",
+                "href": "/comparativo",
+                "ruc": "0990123456001",
+                "periodos": ["202601", "202602", "202603", "202604", "202605", "202606"],
+                "periodosA": ["202601", "202602", "202603"],
+                "periodosB": ["202604", "202605", "202606"],
+            },
+            "executed_tools": ["comparePeriods"],
+        },
+    ]
+
+    result = ai.chat("Que significa esto?", "0990123456001", period_range("202601", "202606"), conversation)
+
+    assert result["provider"] == "xai"
+    assistant_context = next(
+        item["content"]
+        for item in xai.messages
+        if item["role"] == "assistant" and "Contexto visible de la app" in item["content"]
+    )
+    assert "Comparativo" in assistant_context
+    assert "Periodo A: Ene 2026 - Mar 2026" in assistant_context
+    assert "Periodo B: Abr 2026 - Jun 2026" in assistant_context
+    assert "Herramientas usadas: comparePeriods" in assistant_context
+    assert xai.messages[-1] == {"role": "user", "content": "Que significa esto?"}
 
 
 def test_main_dashboard_intent_returns_home_action_for_requested_year():
@@ -485,3 +566,40 @@ def test_local_navigation_intents_accept_two_digit_year_month_ranges(prompt: str
 
     assert result["provider"] == "local-intent"
     assert result["ui_action"]["periodos"] == expected_periodos
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Que quiere decir riesgo medio-bajo?",          # anomalies keyword ("riesgo")
+        "Que significa el score de anomalias?",         # anomalies
+        "Por que cambio el margen entre 2025 y 2026?",  # comparison keywords ("cambio", "entre ... y")
+        "Que es el libro mayor?",                       # general ledger
+        "Para que sirven las notas niif?",              # notes
+        "Es bueno tener un margen neto de 33%?",        # judgement question
+        "Como se interpreta la razon corriente?",       # interpretation
+        "Que tan saludable es la liquidez?",            # interpretation
+        "What does a medium risk score mean?",          # english
+    ],
+)
+def test_conceptual_questions_go_to_model_across_all_areas(question: str):
+    # A question that merely mentions an area keyword must be answered conversationally,
+    # never turned into a templated navigation reply. Holds for every area and phrasing.
+    ai = AiAssistantService(service_with_data(), Settings(), PassiveXaiClient())
+
+    result = ai.chat(question, "0990123456001", ["202501"], [])
+
+    assert result["provider"] == "xai"
+    assert result["message"] == "respuesta del modelo"
+    assert result["ui_action"] is None
+    assert result["executed_tools"] == []
+
+
+def test_navigation_commands_still_use_local_intent_after_explanatory_guard():
+    # Genuine "show me X" commands keep the deterministic fast path (no regression).
+    ai = AiAssistantService(service_with_data(), Settings(), FailingXaiClient())
+
+    result = ai.chat("muestrame las anomalias de 2025", "0990123456001", ["202601"], [])
+
+    assert result["provider"] == "local-intent"
+    assert result["ui_action"]["href"] == "/anomalies"

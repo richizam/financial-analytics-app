@@ -103,7 +103,12 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
   }
 
   const conversation = useMemo(
-    () => messages.slice(-6).map(({ role, content }) => ({ role, content })),
+    () => messages.slice(-6).map(({ role, content, response }) => ({
+      role,
+      content,
+      ui_action: response?.ui_action ?? undefined,
+      executed_tools: response?.executed_tools ?? undefined,
+    })),
     [messages],
   )
 

@@ -85,7 +85,7 @@ class AiAssistantService:
         self.xai_client = xai_client or XaiClient(settings)
         self.tools = AiToolExecutor(financial_service)
 
-    def chat(self, message: str, ruc: str, periodos: list[str], conversation: list[dict[str, str]]) -> dict[str, Any]:
+    def chat(self, message: str, ruc: str, periodos: list[str], conversation: list[dict[str, Any]]) -> dict[str, Any]:
         clean_message = message.strip()
         if not clean_message:
             raise AiToolValidationError("message is required")
@@ -166,6 +166,13 @@ class AiAssistantService:
 
     def _local_intent_response(self, message: str, context: AiContext) -> dict[str, Any] | None:
         normalized = self._normalize_text(message)
+        # Conceptual/explanatory questions ("what does X mean?", "why did Y change?",
+        # "is this good?") are answered conversationally by the model — never short-
+        # circuited into a templated navigation reply. Checked before every area
+        # (anomalies, comparison, ledger, notes, dashboard) because each one is matched
+        # by a keyword that also appears in genuine questions (e.g. "riesgo").
+        if self._is_explanatory_question(normalized):
+            return None
         periodos = self._periods_for_message(normalized, context)
         if self._asks_for_anomalies(normalized):
             result = self._execute_for_periods("getAnomalies", context, periodos)
@@ -625,6 +632,75 @@ class AiAssistantService:
             .lower()
         )
 
+    def _is_explanatory_question(self, normalized: str) -> bool:
+        # General markers of an explanation/interpretation request (ES/EN). Not tied
+        # to any single area or exact phrasing: a navigation command never contains
+        # these, while "que significa / por que / como se / es bueno / what does ..." do.
+        return any(
+            marker in normalized
+            for marker in (
+                "que significa",
+                "que quiere decir",
+                "que es ",
+                "que son ",
+                "que representa",
+                "que indica",
+                "que mide",
+                "que implica",
+                "que tan",
+                "que diferencia hay",
+                "por que",
+                "porque",
+                "a que se debe",
+                "para que sirve",
+                "para que se usa",
+                "como se ",
+                "como calcul",
+                "como interpret",
+                "como leo",
+                "como funciona",
+                "explica",
+                "explicame",
+                "explicacion",
+                "interpreta",
+                "interpretacion",
+                "ayudame a entender",
+                "no entiendo",
+                "es bueno",
+                "es malo",
+                "es normal",
+                "es alto",
+                "es bajo",
+                "es saludable",
+                "es preocupante",
+                "es positivo",
+                "es negativo",
+                "esta bien",
+                "esta mal",
+                "deberia preocuparme",
+                "what does",
+                "what is",
+                "what are",
+                "whats ",
+                "why",
+                "how do",
+                "how is",
+                "how does",
+                "how should",
+                "how can",
+                "explain",
+                "means",
+                "meaning",
+                "interpret",
+                "should i",
+                "is it good",
+                "is it bad",
+                "is it normal",
+                "is this good",
+                "is this bad",
+            )
+        )
+
     def _asks_for_anomalies(self, normalized: str) -> bool:
         return any(
             keyword in normalized
@@ -774,7 +850,7 @@ class AiAssistantService:
         self,
         message: str,
         context: AiContext,
-        conversation: list[dict[str, str]],
+        conversation: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         context_payload = {
             "selected_client_id": context.selected_ruc,
@@ -782,23 +858,72 @@ class AiAssistantService:
             "available_clients": list(context.allowed_rucs),
             "available_periods_for_selected_client": context.available_periods_by_ruc.get(context.selected_ruc, []),
         }
-        input_items: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        input_items: list[dict[str, Any]] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "system",
+                "content": (
+                    "Internal app state for tool selection only. "
+                    "Do not mention, quote, or explain this JSON to the user. "
+                    "For pronouns like this/that/esto/eso, use the visible conversation, not this block.\n"
+                    f"{json.dumps(context_payload, ensure_ascii=False)}"
+                ),
+            },
+        ]
         for item in conversation[-6:]:
             role = item.get("role")
             content = str(item.get("content") or "")[:2000]
             if role in {"user", "assistant"} and content:
+                visible_context = self._visible_conversation_context(item)
+                if visible_context:
+                    content = f"{content}\n\n{visible_context}"
                 input_items.append({"role": role, "content": content})
-        input_items.append(
-            {
-                "role": "user",
-                "content": (
-                    "Backend context JSON:\n"
-                    f"{json.dumps(context_payload, ensure_ascii=False)}\n\n"
-                    f"User question:\n{message}"
-                ),
-            }
-        )
+        input_items.append({"role": "user", "content": message})
         return input_items
+
+    def _visible_conversation_context(self, item: dict[str, Any]) -> str:
+        action = item.get("ui_action") if isinstance(item.get("ui_action"), dict) else None
+        if not action:
+            return ""
+
+        dashboard_id = str(action.get("dashboard_id") or "")
+        view_name = {
+            "financial_summary": "Dashboard principal",
+            "profit_and_loss": "Estado de resultados",
+            "balance_sheet": "Estado de situacion financiera",
+            "revenue_breakdown": "Detalle de ingresos",
+            "expense_breakdown": "Detalle de gastos",
+            "variance_analysis": "Comparativo",
+            "anomalies": "Anomalias",
+            "general_ledger": "Libro Mayor",
+            "notes": "Notas NIIF",
+        }.get(dashboard_id, dashboard_id or "Vista")
+
+        parts = [f"Contexto visible de la app: se abrio {view_name}."]
+        ruc = action.get("ruc")
+        if isinstance(ruc, str) and ruc:
+            parts.append(f"RUC {ruc}.")
+
+        periodos_a = action.get("periodosA") if isinstance(action.get("periodosA"), list) else []
+        periodos_b = action.get("periodosB") if isinstance(action.get("periodosB"), list) else []
+        periodos = action.get("periodos") if isinstance(action.get("periodos"), list) else []
+        clean_a = [str(period) for period in periodos_a if re.fullmatch(r"\d{6}", str(period))]
+        clean_b = [str(period) for period in periodos_b if re.fullmatch(r"\d{6}", str(period))]
+        clean_periodos = [str(period) for period in periodos if re.fullmatch(r"\d{6}", str(period))]
+
+        if clean_a or clean_b:
+            if clean_a:
+                parts.append(f"Periodo A: {self._periodos_label(clean_a)}.")
+            if clean_b:
+                parts.append(f"Periodo B: {self._periodos_label(clean_b)}.")
+        elif clean_periodos:
+            parts.append(f"Periodo visible: {self._periodos_label(clean_periodos)}.")
+
+        tools = item.get("executed_tools") if isinstance(item.get("executed_tools"), list) else []
+        clean_tools = [str(tool) for tool in tools if tool]
+        if clean_tools:
+            parts.append(f"Herramientas usadas: {', '.join(clean_tools)}.")
+        return " ".join(parts)
 
     def _function_calls(self, response: dict[str, Any]) -> list[dict[str, Any]]:
         calls: list[dict[str, Any]] = []
