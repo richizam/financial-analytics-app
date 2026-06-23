@@ -1,17 +1,14 @@
 'use client'
 
-import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
 const errorMessages: Record<string, string> = {
-  OAuthSignin: 'Error al iniciar sesión con el proveedor.',
-  OAuthCallback: 'Error en el callback OAuth. Intenta de nuevo.',
-  OAuthCreateAccount: 'No se pudo crear la cuenta.',
-  EmailCreateAccount: 'No se pudo crear la cuenta con este email.',
-  Callback: 'Error en el proceso de autenticación.',
-  AccessDenied: 'No tienes permiso para acceder a esta aplicación.',
-  default: 'Ocurrió un error inesperado.',
+  ConfirmationFailed: 'No se pudo confirmar el correo. Solicita un nuevo enlace e intenta de nuevo.',
+  AccessDenied: 'No tienes permiso para acceder a esta aplicacion.',
+  missing_supabase_config: 'Falta configurar Supabase en las variables de entorno.',
+  default: 'Ocurrio un error inesperado.',
 }
 
 function ErrorContent() {
@@ -20,7 +17,7 @@ function ErrorContent() {
   const message = errorMessages[error] ?? errorMessages.default
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50">
+    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md rounded-2xl border border-red-100 bg-white p-10 text-center shadow-xs">
         <div className="mb-4 flex justify-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
@@ -29,13 +26,13 @@ function ErrorContent() {
             </svg>
           </div>
         </div>
-        <h1 className="text-lg font-semibold text-gray-900">Error de autenticación</h1>
+        <h1 className="text-lg font-semibold text-gray-900">Error de autenticacion</h1>
         <p className="mt-2 text-sm text-gray-500">{message}</p>
         <Link
           href="/auth/signin"
           className="mt-6 inline-block rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700"
         >
-          Volver al inicio de sesión
+          Volver al inicio de sesion
         </Link>
       </div>
     </main>

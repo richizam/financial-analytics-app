@@ -25,3 +25,6 @@ class CsvStorage(Protocol):
 
     def upsert(self, ruc: str, filename: str, content: str) -> None:
         ...
+
+    def for_workspace(self, workspace_id: str) -> "CsvStorage":
+        ...

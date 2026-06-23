@@ -87,6 +87,9 @@ class AiAssistantService:
         self.xai_client = xai_client or XaiClient(settings)
         self.tools = AiToolExecutor(financial_service)
 
+    def with_financial_service(self, financial_service: FinancialService) -> "AiAssistantService":
+        return AiAssistantService(financial_service, self.settings, self.xai_client)
+
     def chat(
         self,
         message: str,

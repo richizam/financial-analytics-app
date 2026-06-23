@@ -64,3 +64,6 @@ class FileCsvStorage:
         path = self._file_path(ruc, filename)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+
+    def for_workspace(self, workspace_id: str) -> "FileCsvStorage":
+        return self

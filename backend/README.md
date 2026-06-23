@@ -1,59 +1,54 @@
 # Python Backend
 
-This FastAPI service owns the data access and financial calculations for the app.
-Next.js remains the React shell and calls this service through server actions.
+FastAPI owns financial calculations and protected data access. Next.js remains the React shell and calls this service through server actions.
 
 ## Structure
 
 ```text
 backend/app/
   api/                 HTTP routes, dependencies, router composition
-  core/                settings and backend-to-backend security
+  core/                settings, API-key guard, Supabase JWT verification
   domain/financial/    accounting rules and financial application service
+  domain/ai/           Grok/xAI tools and orchestration
   schemas/             Pydantic request schemas
-  storage/             file and PostgreSQL storage adapters
+  storage/             file and Supabase Postgres storage adapters
   main.py              FastAPI app factory
-```
-
-Business logic belongs in `domain/financial`; route handlers should stay thin.
-
-## Run locally
-
-```bash
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r backend/requirements.txt
-python -m uvicorn backend.app.main:app --reload --port 8000
-```
-
-In another terminal, run the Next frontend:
-
-```bash
-npm run dev
 ```
 
 ## Configuration
 
 - `PYTHON_BACKEND_URL`: URL used by Next.js to reach this service. Defaults to `http://127.0.0.1:8000`.
 - `APP_ENV`: set to `production` in production.
-- `BACKEND_STORAGE`: `auto`, `db`, or `file`. Defaults to `auto`.
-- `DATABASE_URL`: PostgreSQL URL used when storage is `db` or when `auto` can connect.
-- `DATA_ROOT`: filesystem fallback root. Defaults to `data/empresas`.
-- `CORS_ORIGINS`: comma-separated browser origins. Defaults to local Next dev origins.
-- `BACKEND_API_KEY`: shared secret sent by Next.js to the Python backend as `X-Backend-Api-Key`.
-- `BACKEND_REQUIRE_API_KEY`: set to `true` to force API-key checks. It defaults to `true` when `APP_ENV=production`.
+- `BACKEND_STORAGE`: use `db` for Supabase Postgres.
+- `DATABASE_URL`: Supabase Postgres connection string.
+- `SUPABASE_URL`: Supabase project URL.
+- `SUPABASE_PUBLISHABLE_KEY`: Supabase publishable key used for token validation fallback.
+- `SUPABASE_AUTH_REQUIRED`: set to `true` in production.
+- `CORS_ORIGINS`: comma-separated browser origins.
+- `BACKEND_API_KEY`: shared secret sent by Next.js as `X-Backend-Api-Key`.
+- `BACKEND_REQUIRE_API_KEY`: set to `true` in production.
 
-The database storage uses the existing Prisma-compatible `CsvFile` table shape.
 Protected application endpoints are mounted under `/api/v1`. `/health` stays public and returns only service status.
+
+## Access Model
+
+Business routes require both:
+
+```text
+X-Backend-Api-Key: <server-side shared key>
+Authorization: Bearer <Supabase access token>
+```
+
+The backend verifies the Supabase JWT, resolves the user's active workspace, and scopes all RUC/file access to that workspace. The AI service receives the same scoped financial service, so AI tools cannot see companies outside the authenticated workspace.
 
 ## Production Access
 
-The Python API is not meant to be a public browser-facing API. In production:
+The Python API is not meant to be public browser-facing infrastructure.
 
-1. Bind it to a private interface or private service network, not directly to the public internet.
-2. Set `APP_ENV=production`, `BACKEND_REQUIRE_API_KEY=true`, and a strong `BACKEND_API_KEY` on both Next.js and FastAPI.
-3. Point `PYTHON_BACKEND_URL` at the private backend URL from the Next.js runtime.
+1. Keep FastAPI on a private Docker/VPS network.
+2. Expose only Nginx/public frontend ports.
+3. Set `APP_ENV=production`, `BACKEND_REQUIRE_API_KEY=true`, and `SUPABASE_AUTH_REQUIRED=true`.
 4. Restrict `CORS_ORIGINS` to the frontend origin.
-5. Do not expose FastAPI directly through a public load balancer unless another private-network or gateway policy blocks public access.
+5. Never expose Supabase secret/service-role keys to the frontend.
 
 When `APP_ENV=production`, FastAPI disables `/docs`, `/redoc`, and `/openapi.json`.

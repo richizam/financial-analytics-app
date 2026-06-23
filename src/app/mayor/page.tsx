@@ -1,9 +1,22 @@
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { getAvailableRucs, getAllPeriods, getMayorPageData } from '@/app/actions'
 import MayorView from '@/components/mayor/MayorView'
 import { selectRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
+import DataAccessError from '@/components/common/DataAccessError'
 
 export default async function MayorPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
+  try {
+    return await renderMayorPage(searchParams)
+  } catch (error) {
+    console.error('Failed to render mayor page', error)
+    return <DataAccessError />
+  }
+}
+
+async function renderMayorPage(searchParams?: PeriodSearchParams) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {

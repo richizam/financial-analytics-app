@@ -1,10 +1,9 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import { getServerSession } from 'next-auth'
 import { Providers } from './providers'
 import { AppShell } from '@/components/layout/AppShell'
-import { authOptions } from '@/lib/auth'
 import { getCompaniesOverview, type CompanyOverview } from '@/app/actions'
+import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
   title: 'Financial Analytics',
@@ -16,23 +15,36 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  // Only authenticated app routes need the company list; skip the backend call
-  // on public auth screens. Failures degrade gracefully to an empty sidebar.
-  const session = await getServerSession(authOptions)
+  const supabaseConfigured =
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
+  const supabase = supabaseConfigured ? await createClient() : null
+  const {
+    data: { user },
+  } = supabase ? await supabase.auth.getUser() : { data: { user: null } }
+
   let companies: CompanyOverview[] = []
-  if (session) {
+  if (user) {
     try {
       companies = await getCompaniesOverview()
     } catch {
       companies = []
     }
   }
+  const appUser = user
+    ? { name: user.user_metadata?.full_name ?? null, email: user.email ?? null }
+    : null
 
   return (
     <html lang="es">
       <body>
         <Providers>
-          <AppShell companies={companies}>{children}</AppShell>
+          <AppShell
+            companies={companies}
+            user={appUser}
+          >
+            {children}
+          </AppShell>
         </Providers>
       </body>
     </html>

@@ -1,9 +1,22 @@
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { getAvailableRucs, getAllPeriods, getAnomaliesData } from '@/app/actions'
 import AnomaliesView from '@/components/anomalies/AnomaliesView'
 import { selectRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
+import DataAccessError from '@/components/common/DataAccessError'
 
 export default async function AnomaliesPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
+  try {
+    return await renderAnomaliesPage(searchParams)
+  } catch (error) {
+    console.error('Failed to render anomalies page', error)
+    return <DataAccessError />
+  }
+}
+
+async function renderAnomaliesPage(searchParams?: PeriodSearchParams) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {

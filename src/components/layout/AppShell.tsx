@@ -9,9 +9,11 @@ import type { CompanyOverview } from '@/app/actions'
 
 export function AppShell({
   companies,
+  user,
   children,
 }: {
   companies: CompanyOverview[]
+  user: { name: string | null; email: string | null } | null
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -25,7 +27,7 @@ export function AppShell({
       {/* Desktop rail */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 md:block">
         <Suspense fallback={null}>
-          <Sidebar companies={companies} />
+          <Sidebar companies={companies} user={user} />
         </Suspense>
       </aside>
 
@@ -45,7 +47,7 @@ export function AppShell({
           <SheetTitle className="sr-only">Menú</SheetTitle>
           <SheetDescription className="sr-only">Empresas y acciones</SheetDescription>
           <Suspense fallback={null}>
-            <Sidebar companies={companies} onNavigate={() => setMobileOpen(false)} />
+            <Sidebar companies={companies} user={user} onNavigate={() => setMobileOpen(false)} />
           </Suspense>
         </SheetContent>
       </Sheet>

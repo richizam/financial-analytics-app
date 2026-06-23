@@ -1,3 +1,5 @@
+import { createClient } from '@/lib/supabase/server'
+
 function backendBaseUrl(): string {
   const raw =
     process.env.PYTHON_BACKEND_URL ??
@@ -12,9 +14,23 @@ function backendPath(path: string): string {
   return `/api/v1${path.startsWith('/') ? path : `/${path}`}`
 }
 
-function backendHeaders(): HeadersInit {
+async function backendHeaders(): Promise<HeadersInit> {
   const apiKey = process.env.BACKEND_API_KEY
-  return apiKey ? { 'X-Backend-Api-Key': apiKey } : {}
+  const headers: Record<string, string> = apiKey ? { 'X-Backend-Api-Key': apiKey } : {}
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  if (supabaseUrl && supabaseKey) {
+    const supabase = await createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`
+    }
+  }
+
+  return headers
 }
 
 async function readJson<T>(response: Response, path: string): Promise<T> {
@@ -34,7 +50,7 @@ async function readJson<T>(response: Response, path: string): Promise<T> {
 export async function getBackendJson<T>(path: string): Promise<T> {
   const apiPath = backendPath(path)
   const response = await fetch(`${backendBaseUrl()}${apiPath}`, {
-    headers: backendHeaders(),
+    headers: await backendHeaders(),
     cache: 'no-store',
   })
   return readJson<T>(response, apiPath)
@@ -44,7 +60,7 @@ export async function postBackendJson<T>(path: string, body: unknown): Promise<T
   const apiPath = backendPath(path)
   const response = await fetch(`${backendBaseUrl()}${apiPath}`, {
     method: 'POST',
-    headers: { ...backendHeaders(), 'Content-Type': 'application/json' },
+    headers: { ...(await backendHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     cache: 'no-store',
   })
@@ -55,7 +71,7 @@ export async function postBackendForm<T>(path: string, body: FormData): Promise<
   const apiPath = backendPath(path)
   const response = await fetch(`${backendBaseUrl()}${apiPath}`, {
     method: 'POST',
-    headers: backendHeaders(),
+    headers: await backendHeaders(),
     body,
     cache: 'no-store',
   })

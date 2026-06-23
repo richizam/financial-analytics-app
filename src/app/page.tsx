@@ -7,15 +7,24 @@ import Link from 'next/link'
 import { Upload } from 'lucide-react'
 import { selectRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
+import DataAccessError from '@/components/common/DataAccessError'
 
 export default async function Home({ searchParams }: { searchParams?: PeriodSearchParams }) {
+  try {
+    return await renderHome(searchParams)
+  } catch (error) {
+    console.error('Failed to render dashboard page', error)
+    return <DataAccessError />
+  }
+}
+
+async function renderHome(searchParams?: PeriodSearchParams) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="rounded-xl border border-gray-200 bg-white p-10 text-center shadow-xs max-w-md">
-          <div className="mb-4 text-4xl">📊</div>
           <p className="text-base font-semibold text-gray-800">No hay empresas cargadas aún</p>
           <p className="mt-2 text-sm text-gray-500">
             Sube los archivos CSV de tu empresa para comenzar a ver el dashboard financiero.

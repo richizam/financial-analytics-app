@@ -5,8 +5,18 @@ import { getAvailableRucs, getAllPeriods, getNotasData, getCompanyConfig } from 
 import NotasView from './NotasView'
 import { selectRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
+import DataAccessError from '@/components/common/DataAccessError'
 
 export default async function NotasPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
+  try {
+    return await renderNotasPage(searchParams)
+  } catch (error) {
+    console.error('Failed to render notas page', error)
+    return <DataAccessError />
+  }
+}
+
+async function renderNotasPage(searchParams?: PeriodSearchParams) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {

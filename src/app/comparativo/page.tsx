@@ -1,9 +1,22 @@
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { getAvailableRucs, getAllPeriods, getComparativoData } from '@/app/actions'
 import ComparativoView from '@/components/comparativo/ComparativoView'
 import { selectComparativoRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
+import DataAccessError from '@/components/common/DataAccessError'
 
 export default async function ComparativoPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
+  try {
+    return await renderComparativoPage(searchParams)
+  } catch (error) {
+    console.error('Failed to render comparativo page', error)
+    return <DataAccessError />
+  }
+}
+
+async function renderComparativoPage(searchParams?: PeriodSearchParams) {
   const rucs = await getAvailableRucs()
 
   if (rucs.length === 0) {

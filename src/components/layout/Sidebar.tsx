@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
 import {
   Building2,
   CalendarRange,
@@ -28,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { createClient } from '@/lib/supabase/client'
 
 const SECTOR_LABELS: Record<string, string> = {
   comercial: 'Comercial',
@@ -63,14 +63,15 @@ function periodRangeLabel(periods: string[]): string {
 
 export function Sidebar({
   companies,
+  user,
   onNavigate,
 }: {
   companies: CompanyOverview[]
+  user: { name: string | null; email: string | null } | null
   onNavigate?: () => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { data: session } = useSession()
   const [isSeeding, startSeed] = useTransition()
   const [seedMsg, setSeedMsg] = useState<string | null>(null)
 
@@ -118,8 +119,16 @@ export function Sidebar({
     })
   }
 
-  const userName = session?.user?.name ?? session?.user?.email ?? 'Usuario'
-  const userEmail = session?.user?.email ?? ''
+  async function handleSignOut() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    onNavigate?.()
+    router.push('/auth/signin')
+    router.refresh()
+  }
+
+  const userName = user?.name ?? user?.email ?? 'Usuario'
+  const userEmail = user?.email ?? ''
 
   return (
     <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar">
@@ -259,7 +268,7 @@ export function Sidebar({
           <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuLabel className="truncate">{userEmail || userName}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => signOut({ callbackUrl: '/auth/signin' })}>
+            <DropdownMenuItem variant="destructive" onClick={handleSignOut}>
               <LogOut className="h-4 w-4" /> Cerrar sesión
             </DropdownMenuItem>
           </DropdownMenuContent>

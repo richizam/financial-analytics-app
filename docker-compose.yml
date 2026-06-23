@@ -1,19 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-financial_analytics}
-      POSTGRES_USER: ${POSTGRES_USER:-financial}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-financial_local_password}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financial} -d ${POSTGRES_DB:-financial_analytics}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
   backend:
     build:
       context: .
@@ -23,16 +8,16 @@ services:
       BACKEND_STORAGE: db
       BACKEND_REQUIRE_API_KEY: "true"
       BACKEND_API_KEY: ${BACKEND_API_KEY:-local-backend-key-change-me}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-financial}:${POSTGRES_PASSWORD:-financial_local_password}@postgres:5432/${POSTGRES_DB:-financial_analytics}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to your Supabase Postgres connection string}
+      SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL to your Supabase project URL}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY to your Supabase publishable key}
+      SUPABASE_AUTH_REQUIRED: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       XAI_API_KEY: ${XAI_API_KEY:-}
       XAI_BASE_URL: ${XAI_BASE_URL:-https://api.x.ai/v1}
       XAI_MODEL: ${XAI_MODEL:-grok-4.3}
       XAI_REASONING_EFFORT: ${XAI_REASONING_EFFORT:-medium}
       XAI_TIMEOUT_SECONDS: ${XAI_TIMEOUT_SECONDS:-45}
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
       interval: 10s
@@ -44,20 +29,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL to your Supabase project URL}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY to your Supabase publishable key}
     environment:
       NODE_ENV: production
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:8080}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-nextauth-secret-change-me-32-chars}
-      NEXTAUTH_URL_INTERNAL: http://frontend:3000
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL to your Supabase project URL}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY to your Supabase publishable key}
       PYTHON_BACKEND_URL: http://backend:8000
       BACKEND_API_KEY: ${BACKEND_API_KEY:-local-backend-key-change-me}
-      DEMO_USER: ${DEMO_USER:-demo}
-      DEMO_PASSWORD: ${DEMO_PASSWORD:-demo1234}
-      AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID:-}
-      AZURE_AD_CLIENT_SECRET: ${AZURE_AD_CLIENT_SECRET:-}
-      AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID:-common}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     depends_on:
       backend:
         condition: service_healthy
@@ -83,6 +63,3 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
-
-volumes:
-  postgres_data:

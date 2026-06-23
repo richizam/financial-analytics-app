@@ -49,6 +49,15 @@ class Settings:
         os.getenv("APP_ENV", os.getenv("NODE_ENV", "local")).lower() in {"prod", "production"},
     )
 
+    supabase_url: str | None = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+    supabase_publishable_key: str | None = (
+        os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
+    )
+    supabase_auth_required: bool = _bool_env(
+        "SUPABASE_AUTH_REQUIRED",
+        os.getenv("APP_ENV", os.getenv("NODE_ENV", "local")).lower() in {"prod", "production"},
+    )
+
     xai_api_key: str | None = os.getenv("XAI_API_KEY")
     xai_base_url: str = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1").strip()
     xai_model: str = os.getenv("XAI_MODEL", "grok-4.3").strip()
@@ -67,6 +76,18 @@ class Settings:
     def is_production(self) -> bool:
         return self.app_env in {"prod", "production"}
 
+    @property
+    def supabase_configured(self) -> bool:
+        return bool(self.supabase_url and self.supabase_publishable_key)
+
+    @property
+    def supabase_auth_issuer(self) -> str:
+        return f"{str(self.supabase_url).rstrip('/')}/auth/v1"
+
+    @property
+    def supabase_jwks_url(self) -> str:
+        return f"{self.supabase_auth_issuer}/.well-known/jwks.json"
+
     def validate(self) -> None:
         if self.backend_storage not in {"auto", "db", "file"}:
             raise RuntimeError("BACKEND_STORAGE must be auto, db, or file")
@@ -74,6 +95,8 @@ class Settings:
             raise RuntimeError("DATABASE_URL is required when BACKEND_STORAGE=db")
         if self.api_key_required and not self.backend_api_key:
             raise RuntimeError("BACKEND_API_KEY is required when backend API key protection is enabled")
+        if self.supabase_auth_required and not self.supabase_configured:
+            raise RuntimeError("Supabase auth requires SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY")
         if not self.xai_base_url:
             raise RuntimeError("XAI_BASE_URL cannot be empty")
         if not self.xai_model:

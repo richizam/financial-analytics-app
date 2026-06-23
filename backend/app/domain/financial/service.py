@@ -43,6 +43,9 @@ class FinancialService:
     def __init__(self, storage: CsvStorage) -> None:
         self.storage = storage
 
+    def for_workspace(self, workspace_id: str) -> "FinancialService":
+        return FinancialService(self.storage.for_workspace(workspace_id))
+
     def get_available_rucs(self) -> list[str]:
         return self.storage.list_rucs()
 
