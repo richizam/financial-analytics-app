@@ -37,6 +37,10 @@ class Settings:
 
     backend_storage: str = os.getenv("BACKEND_STORAGE", "auto").strip().lower()
     database_url: str | None = os.getenv("DATABASE_URL")
+    # Direct (session-mode / port 5432) connection used ONLY by the LangGraph
+    # Postgres checkpointer; the transaction-mode pooler (6543) breaks prepared
+    # statements. Falls back to database_url when unset.
+    database_url_direct: str | None = os.getenv("DATABASE_URL_DIRECT")
     data_root: Path = Path(os.getenv("DATA_ROOT", "data/empresas"))
 
     cors_origins: tuple[str, ...] = tuple(
@@ -63,6 +67,11 @@ class Settings:
     xai_model: str = os.getenv("XAI_MODEL", "grok-4.3").strip()
     xai_reasoning_effort: str = os.getenv("XAI_REASONING_EFFORT", "medium").strip().lower()
     xai_timeout_seconds: float = float(os.getenv("XAI_TIMEOUT_SECONDS", "45"))
+
+    # Which AI orchestrator backs /ai/chat: "legacy" (hand-rolled loop) or
+    # "langgraph" (graph + checkpointer + clarification). Defaults to legacy
+    # until the LangGraph path is validated in production.
+    ai_orchestrator: str = os.getenv("AI_ORCHESTRATOR", "legacy").strip().lower()
 
     @property
     def api_key_required(self) -> bool:
@@ -103,6 +112,12 @@ class Settings:
             raise RuntimeError("XAI_MODEL cannot be empty")
         if self.xai_reasoning_effort not in XAI_REASONING_EFFORTS:
             raise RuntimeError("XAI_REASONING_EFFORT must be none, low, medium, or high")
+        if self.ai_orchestrator not in {"legacy", "langgraph"}:
+            raise RuntimeError("AI_ORCHESTRATOR must be legacy or langgraph")
+
+    @property
+    def checkpointer_dsn(self) -> str | None:
+        return self.database_url_direct or self.database_url
 
 
 @lru_cache(maxsize=1)

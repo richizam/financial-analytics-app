@@ -100,6 +100,12 @@ export interface AiUiAction {
   }
 }
 
+export interface AiClarification {
+  question: string
+  options?: string[]
+  field?: string | null
+}
+
 export interface AiChatResponse {
   message: string
   ui_action: AiUiAction | null
@@ -107,6 +113,10 @@ export interface AiChatResponse {
   executed_tools: string[]
   provider: string
   model?: string
+  // Present when the assistant pauses to ask for missing info (LangGraph path).
+  clarification?: AiClarification | null
+  // Opaque per-thread id to send back on the next turn (and as `resume` target).
+  conversation_id?: string
 }
 
 export interface CsvMappingProposal {

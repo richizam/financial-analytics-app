@@ -81,14 +81,27 @@ class AiAssistantService:
         financial_service: FinancialService,
         settings: Settings,
         xai_client: XaiClient | None = None,
+        orchestrator: Any | None = None,
     ) -> None:
         self.financial_service = financial_service
         self.settings = settings
         self.xai_client = xai_client or XaiClient(settings)
         self.tools = AiToolExecutor(financial_service)
+        # LangGraph orchestrator (shared across workspaces so the checkpointer is
+        # reused). Built lazily only when ai_orchestrator == "langgraph".
+        self._orchestrator = orchestrator
 
     def with_financial_service(self, financial_service: FinancialService) -> "AiAssistantService":
-        return AiAssistantService(financial_service, self.settings, self.xai_client)
+        return AiAssistantService(
+            financial_service, self.settings, self.xai_client, self._orchestrator
+        )
+
+    def _get_orchestrator(self) -> Any:
+        if self._orchestrator is None:
+            from .orchestrator import LangGraphOrchestrator
+
+            self._orchestrator = LangGraphOrchestrator(self.settings)
+        return self._orchestrator
 
     def chat(
         self,
@@ -97,6 +110,8 @@ class AiAssistantService:
         periodos: list[str],
         conversation: list[dict[str, Any]],
         conversation_summary: str | None = None,
+        thread_id: str | None = None,
+        resume: str | None = None,
     ) -> dict[str, Any]:
         clean_message = message.strip()
         if not clean_message:
@@ -106,6 +121,11 @@ class AiAssistantService:
         local_response = self._local_intent_response(clean_message, context)
         if local_response:
             return local_response
+
+        if self.settings.ai_orchestrator == "langgraph":
+            return self._chat_langgraph(
+                clean_message, context, conversation, conversation_summary, thread_id, resume
+            )
 
         executed_results: list[dict[str, Any]] = []
         try:
@@ -180,6 +200,28 @@ class AiAssistantService:
             "provider": "xai",
             "model": self.xai_client.model,
         }
+
+    def _chat_langgraph(
+        self,
+        message: str,
+        context: AiContext,
+        conversation: list[dict[str, Any]],
+        conversation_summary: str | None,
+        thread_id: str | None,
+        resume: str | None = None,
+    ) -> dict[str, Any]:
+        import uuid
+
+        input_items = self._initial_input(message, context, conversation, conversation_summary)
+        resolved_thread = thread_id or f"mem-{uuid.uuid4().hex}"
+        return self._get_orchestrator().chat(
+            input_items=input_items,
+            context=context,
+            executor=self.tools,
+            thread_id=resolved_thread,
+            new_message=message,
+            resume=resume,
+        )
 
     def _local_intent_response(self, message: str, context: AiContext) -> dict[str, Any] | None:
         normalized = self._normalize_text(message)

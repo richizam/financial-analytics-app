@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from backend.app.api.dependencies import get_ai_service
+from backend.app.core.security import AuthenticatedUser, require_supabase_user
 from backend.app.domain.ai import AiAssistantService
 from backend.app.domain.ai.tools import AiToolValidationError
 from backend.app.domain.ai.xai_client import XaiClientError, XaiConfigurationError
@@ -18,9 +20,14 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 def chat(
     request: AiChatRequest,
     ai_service: AiAssistantService = Depends(get_ai_service),
+    user: AuthenticatedUser = Depends(require_supabase_user),
 ) -> dict[str, Any]:
+    # Public handle is the client's opaque conversation_id; the real LangGraph
+    # thread_id is namespaced with the workspace so threads can't cross tenants.
+    conversation_id = request.conversation_id or uuid.uuid4().hex
+    thread_id = f"{user.workspace_id}:{conversation_id}"
     try:
-        return ai_service.chat(
+        result = ai_service.chat(
             request.message,
             request.ruc,
             request.periodos,
@@ -29,7 +36,12 @@ def chat(
                 for item in request.conversation
             ],
             request.conversation_summary,
+            thread_id=thread_id,
+            resume=request.resume,
         )
+        result.pop("thread_id", None)
+        result["conversation_id"] = conversation_id
+        return result
     except AiToolValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except XaiConfigurationError as exc:

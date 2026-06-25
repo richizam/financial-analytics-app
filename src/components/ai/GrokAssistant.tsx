@@ -29,6 +29,7 @@ const EXAMPLES = [
 
 const MESSAGE_STORAGE_KEY = 'financial-ai-assistant-messages-v1'
 const MEMORY_STORAGE_KEY = 'financial-ai-assistant-memory-v1'
+const THREAD_STORAGE_KEY = 'financial-ai-assistant-thread-v1'
 const MAX_STORED_MESSAGES = 30
 const ACTIVE_CONTEXT_MESSAGES = 10
 const MAX_MEMORY_ITEMS = 18
@@ -149,6 +150,10 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  // Server-side conversation thread (LangGraph path); null until the backend assigns one.
+  const conversationIdRef = useRef<string | null>(null)
+  // True while the assistant is waiting for the user's answer to a clarification.
+  const [awaitingClarification, setAwaitingClarification] = useState(false)
 
   useEffect(() => {
     try {
@@ -163,6 +168,9 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
           setMessages(cleanMessages)
         }
       }
+
+      const storedThread = window.localStorage.getItem(THREAD_STORAGE_KEY)
+      if (storedThread) conversationIdRef.current = storedThread
 
       const storedMemory = window.localStorage.getItem(MEMORY_STORAGE_KEY)
       if (storedMemory) {
@@ -223,12 +231,15 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
   function clearConversation() {
     messagesRef.current = []
     memoryRef.current = []
+    conversationIdRef.current = null
     setMessages([])
     setConversationMemory([])
+    setAwaitingClarification(false)
     setError(null)
     try {
       window.localStorage.removeItem(MESSAGE_STORAGE_KEY)
       window.localStorage.removeItem(MEMORY_STORAGE_KEY)
+      window.localStorage.removeItem(THREAD_STORAGE_KEY)
     } catch {
       // Storage is best effort only.
     }
@@ -258,6 +269,9 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
     setError(null)
     updateMessages(current => [...current, { role: 'user', content: clean }])
 
+    // If the assistant is waiting on a clarification, this message is the answer.
+    const resume = awaitingClarification ? clean : undefined
+
     startTransition(async () => {
       try {
         const response = await askGrokAnalytics({
@@ -266,12 +280,62 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
           periodos: selectedPeriods,
           conversation,
           conversation_summary: conversationSummary,
+          conversation_id: conversationIdRef.current ?? undefined,
+          resume,
         })
+        if (response.conversation_id) {
+          conversationIdRef.current = response.conversation_id
+          try {
+            window.localStorage.setItem(THREAD_STORAGE_KEY, response.conversation_id)
+          } catch {
+            // Storage is best effort only.
+          }
+        }
+        setAwaitingClarification(Boolean(response.clarification))
         updateMessages(current => [
           ...current,
           { role: 'assistant', content: response.message, response },
         ])
         // Auto-apply the suggested view — the dashboard updates without a button press.
+        if (response.ui_action && hasActionPeriods(response.ui_action)) {
+          onApplyAction(response.ui_action)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    })
+  }
+
+  function answerClarification(option: string) {
+    if (isPending) return
+    setInput('')
+    setError(null)
+    updateMessages(current => [...current, { role: 'user', content: option }])
+
+    startTransition(async () => {
+      try {
+        const response = await askGrokAnalytics({
+          message: option,
+          ruc,
+          periodos: selectedPeriods,
+          conversation,
+          conversation_summary: conversationSummary,
+          conversation_id: conversationIdRef.current ?? undefined,
+          resume: option,
+        })
+        if (response.conversation_id) {
+          conversationIdRef.current = response.conversation_id
+          try {
+            window.localStorage.setItem(THREAD_STORAGE_KEY, response.conversation_id)
+          } catch {
+            // Storage is best effort only.
+          }
+        }
+        setAwaitingClarification(Boolean(response.clarification))
+        updateMessages(current => [
+          ...current,
+          { role: 'assistant', content: response.message, response },
+        ])
         if (response.ui_action && hasActionPeriods(response.ui_action)) {
           onApplyAction(response.ui_action)
         }
@@ -361,6 +425,10 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
                 const isUser = message.role === 'user'
                 const action = message.response?.ui_action
                 const citations = message.response?.citations ?? []
+                const clarification = message.response?.clarification
+                const isLastMessage = index === messages.length - 1
+                const clarificationOptions =
+                  isLastMessage && awaitingClarification ? clarification?.options ?? [] : []
                 return (
                   <div key={index} className={`flex w-full items-end gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
                     {!isUser && (
@@ -388,6 +456,22 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
                           <Check className="h-3.5 w-3.5" />
                           {actionLabel(action)}
                         </span>
+                      )}
+
+                      {clarificationOptions.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {clarificationOptions.map(option => (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => answerClarification(option)}
+                              disabled={isPending}
+                              className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>

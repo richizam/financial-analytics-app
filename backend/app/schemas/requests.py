@@ -47,3 +47,8 @@ class AiChatRequest(BaseModel):
     periodos: list[str] = []
     conversation: list[AiConversationMessage] = []
     conversation_summary: str | None = None
+    # Opaque per-thread id from the client; namespaced with the workspace on the
+    # server to form the LangGraph thread_id. Generated server-side if absent.
+    conversation_id: str | None = None
+    # The user's answer to a pending clarification (resumes an interrupted run).
+    resume: str | None = None

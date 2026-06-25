@@ -30,7 +30,20 @@ def create_app() -> FastAPI:
 
     storage = create_storage(settings)
     app.state.financial_service = FinancialService(storage)
-    app.state.ai_service = AiAssistantService(app.state.financial_service, settings)
+
+    # Build the LangGraph orchestrator (with a Postgres checkpointer) once at
+    # startup so the checkpointer/connection pool is shared across requests.
+    orchestrator = None
+    if settings.ai_orchestrator == "langgraph":
+        from backend.app.domain.ai.checkpointer import build_checkpointer
+        from backend.app.domain.ai.orchestrator import LangGraphOrchestrator
+
+        checkpointer = build_checkpointer(settings)
+        orchestrator = LangGraphOrchestrator(settings, checkpointer=checkpointer)
+
+    app.state.ai_service = AiAssistantService(
+        app.state.financial_service, settings, orchestrator=orchestrator
+    )
     app.include_router(public_router)
     app.include_router(protected_router, prefix=settings.api_prefix)
     return app
