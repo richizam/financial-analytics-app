@@ -47,6 +47,7 @@ class HybridStorage:
         filename: str,
         content: str,
         entries: list[dict[str, Any]],
+        aggregates: list[dict[str, Any]],
         meta: dict[str, Any],
     ) -> None:
         self.upsert(ruc, filename, content)

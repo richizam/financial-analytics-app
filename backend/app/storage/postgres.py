@@ -182,6 +182,7 @@ class DatabaseCsvStorage:
         filename: str,
         content: str,
         entries: list[dict[str, Any]],
+        aggregates: list[dict[str, Any]],
         meta: dict[str, Any],
     ) -> None:
         period = filename[:6]
@@ -259,7 +260,7 @@ class DatabaseCsvStorage:
                             for index, entry in enumerate(entries, start=1)
                         ],
                     )
-                self._upsert_account_period_balances(cur, workspace_id, company_id, ruc, entries)
+                self._upsert_account_period_balances(cur, workspace_id, company_id, ruc, aggregates)
                 self._invalidate_analysis_cache_cur(cur, workspace_id, ruc)
 
     def upsert_opening_balance_import(
@@ -541,28 +542,11 @@ class DatabaseCsvStorage:
         workspace_id: str,
         company_id: str,
         ruc: str,
-        entries: list[dict[str, Any]],
+        aggregates: list[dict[str, Any]],
     ) -> None:
-        grouped: dict[tuple[str, str], dict[str, Any]] = {}
-        for entry in entries:
-            key = (str(entry.get("periodo", "")), str(entry.get("codCuenta", "")))
-            current = grouped.setdefault(
-                key,
-                {
-                    "period": key[0],
-                    "codCuenta": key[1],
-                    "nombreCuenta": entry.get("nombreCuenta", ""),
-                    "debe": 0,
-                    "haber": 0,
-                    "count": 0,
-                },
-            )
-            current["nombreCuenta"] = entry.get("nombreCuenta", current["nombreCuenta"])
-            current["debe"] += int(entry.get("debe", 0))
-            current["haber"] += int(entry.get("haber", 0))
-            current["count"] += 1
-
-        if not grouped:
+        # Aggregates are computed in the domain layer (aggregation.py); storage
+        # only persists the precomputed per-account-period rows.
+        if not aggregates:
             return
 
         cur.executemany(
@@ -590,12 +574,12 @@ class DatabaseCsvStorage:
                     item["period"],
                     item["codCuenta"],
                     item["nombreCuenta"],
-                    item["debe"],
-                    item["haber"],
-                    item["debe"] - item["haber"],
-                    item["count"],
+                    int(item["totalDebe"]),
+                    int(item["totalHaber"]),
+                    int(item["saldo"]),
+                    int(item["entryCount"]),
                 )
-                for item in grouped.values()
+                for item in aggregates
             ],
         )
 
