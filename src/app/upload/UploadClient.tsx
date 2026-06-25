@@ -6,7 +6,24 @@ import type { CsvMappingResponse } from '@/app/actions'
 import { Upload, CheckCircle, XCircle, Loader2, ArrowLeft, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
-interface UploadResult { filename: string; ok: boolean; error?: string }
+interface UploadResult { filename: string; ok: boolean; error?: string; warnings?: string[]; rowCount?: number }
+
+const FIELD_LABELS: Record<string, string> = {
+  transaction_date: 'Fecha',
+  description: 'Descripcion',
+  debit: 'Debe',
+  credit: 'Haber',
+  amount: 'Monto unico',
+  account_code: 'Codigo de cuenta',
+  account_name: 'Nombre de cuenta',
+  journal_entry: 'Asiento',
+  entry_type: 'Tipo',
+  currency: 'Moneda',
+  cost_center: 'Centro de costo',
+  document_number: 'Documento',
+}
+
+const REQUIRED_FIELDS = new Set(['transaction_date', 'description', 'account_code', 'debit', 'credit'])
 
 export default function UploadClient() {
   const [ruc, setRuc]           = useState('')
@@ -31,8 +48,32 @@ export default function UploadClient() {
         const fd = new FormData()
         fd.append('file', file)
         fd.append('ruc', ruc)
+        if (mapping && files.length === 1) {
+          fd.append('mapping', JSON.stringify(mapping.proposal.mapping))
+        }
         const res = await uploadCsvAction(fd)
-        newResults.push({ filename: file.name, ok: res.ok, error: res.error })
+        if (res.mappingRequired && res.file_profile && res.proposal) {
+          setMapping({
+            provider: res.provider ?? 'heuristic',
+            file_profile: res.file_profile,
+            proposal: res.proposal,
+            warnings: res.warnings ?? [],
+          })
+          newResults.push({
+            filename: file.name,
+            ok: false,
+            error: res.error ?? 'Confirma el mapeo de columnas para importar este CSV.',
+            warnings: res.warnings,
+          })
+          break
+        }
+        newResults.push({
+          filename: file.name,
+          ok: res.ok,
+          error: res.error,
+          warnings: res.warnings,
+          rowCount: res.rowCount,
+        })
       } catch (err) {
         newResults.push({ filename: file.name, ok: false, error: String(err) })
       }
@@ -42,6 +83,7 @@ export default function UploadClient() {
     setLoading(false)
     if (newResults.every(r => r.ok)) {
       setFiles(null)
+      setMapping(null)
       if (inputRef.current) inputRef.current.value = ''
     }
   }
@@ -67,6 +109,22 @@ export default function UploadClient() {
     e.preventDefault(); setDragOver(false)
     setFiles(e.dataTransfer.files)
     setMapping(null)
+  }
+
+  function updateMappingField(target: string, source: string) {
+    setMapping(current => {
+      if (!current) return current
+      return {
+        ...current,
+        proposal: {
+          ...current.proposal,
+          mapping: {
+            ...current.proposal.mapping,
+            [target]: source || null,
+          },
+        },
+      }
+    })
   }
 
   const completed = results.length
@@ -150,20 +208,37 @@ export default function UploadClient() {
                   </span>
                 </div>
 
-                <div className="grid gap-1 text-xs sm:grid-cols-2">
+                {files && files.length > 1 && (
+                  <p className="mb-3 rounded-md bg-white px-2 py-1.5 text-xs text-blue-800">
+                    El mapeo se confirma por archivo. Deja solo un CSV seleccionado para aplicar este mapeo.
+                  </p>
+                )}
+
+                <div className="grid gap-2 text-xs sm:grid-cols-2">
                   {Object.entries(mapping.proposal.mapping)
-                    .filter(([, source]) => source)
                     .map(([target, source]) => (
-                      <div key={target} className="flex items-center justify-between gap-2 rounded-sm bg-white px-2 py-1.5">
-                        <span className="font-medium text-gray-600">{target}</span>
-                        <span className="truncate text-gray-900">{source}</span>
+                      <div key={target} className="rounded-sm bg-white px-2 py-1.5">
+                        <label className="mb-1 block font-medium text-gray-600">
+                          {FIELD_LABELS[target] ?? target}
+                          {REQUIRED_FIELDS.has(target) && <span className="text-red-500"> *</span>}
+                        </label>
+                        <select
+                          value={source ?? ''}
+                          onChange={event => updateMappingField(target, event.target.value)}
+                          className="w-full rounded-md border border-blue-100 bg-white px-2 py-1 text-gray-900 focus:border-blue-400 focus:outline-hidden"
+                        >
+                          <option value="">Sin mapear</option>
+                          {mapping.file_profile.columns.map(column => (
+                            <option key={column.name} value={column.name}>{column.name}</option>
+                          ))}
+                        </select>
                       </div>
                     ))}
                 </div>
 
-                {mapping.warnings.length > 0 && (
+                {[...mapping.warnings, ...mapping.proposal.warnings].length > 0 && (
                   <div className="mt-3 space-y-1">
-                    {mapping.warnings.slice(0, 4).map((warning, index) => (
+                    {[...mapping.warnings, ...mapping.proposal.warnings].slice(0, 4).map((warning, index) => (
                       <p key={index} className="text-xs text-blue-800">{warning}</p>
                     ))}
                   </div>
@@ -202,7 +277,13 @@ export default function UploadClient() {
                     : <XCircle size={16} className="mt-0.5 shrink-0" />}
                   <div>
                     <span className="font-medium">{r.filename}</span>
+                    {r.ok && typeof r.rowCount === 'number' && (
+                      <p className="mt-0.5 text-xs opacity-80">{r.rowCount} filas importadas</p>
+                    )}
                     {r.error && <p className="mt-0.5 text-xs opacity-80">{r.error}</p>}
+                    {r.warnings?.slice(0, 3).map((warning, index) => (
+                      <p key={index} className="mt-0.5 text-xs opacity-80">{warning}</p>
+                    ))}
                   </div>
                 </div>
               ))}

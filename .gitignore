@@ -29,3 +29,9 @@ tsconfig.tsbuildinfo
 
 # local design notes (kept out of the repo)
 grok_ai_integration_architecture.md
+
+# Claude Code local tooling
+.agents/
+.mcp.json
+skills-lock.json
+.claude/skills/

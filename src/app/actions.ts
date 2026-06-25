@@ -131,6 +131,21 @@ export interface CsvMappingResponse {
   model?: string
 }
 
+export interface UploadCsvResult {
+  ok: boolean
+  error?: string
+  filename?: string
+  normalized?: boolean
+  rowCount?: number
+  provider?: string
+  confidence?: number
+  warnings?: string[]
+  errors?: Array<{ row?: number; field?: string; message?: string }>
+  mappingRequired?: boolean
+  file_profile?: CsvMappingResponse['file_profile']
+  proposal?: CsvMappingProposal
+}
+
 export type { AnomaliesData }
 
 export async function getAvailableRucs(): Promise<string[]> {
@@ -177,8 +192,8 @@ export async function getComparativoData(
 
 export async function uploadCsvAction(
   formData: FormData,
-): Promise<{ ok: boolean; error?: string; filename?: string }> {
-  return postBackendForm<{ ok: boolean; error?: string; filename?: string }>('/upload-csv', formData)
+): Promise<UploadCsvResult> {
+  return postBackendForm<UploadCsvResult>('/upload-csv', formData)
 }
 
 export async function saveCompanyConfig(config: CompanyConfig): Promise<{ ok: boolean; error?: string }> {
