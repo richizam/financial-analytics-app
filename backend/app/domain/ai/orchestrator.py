@@ -13,6 +13,7 @@ from typing import Any
 from backend.app.core.config import Settings
 
 from .model_adapter import build_chat_model
+from .presentation import build_blocks
 from .tools import AiContext, AiToolExecutor
 
 
@@ -199,6 +200,7 @@ class LangGraphOrchestrator:
             "ui_action": ui_action,
             "citations": citations,
             "executed_tools": [str(result.get("tool_name")) for result in executed_results],
+            "blocks": build_blocks(executed_results),
             "provider": "langgraph",
             "model": self.settings.xai_model,
             "thread_id": thread_id,

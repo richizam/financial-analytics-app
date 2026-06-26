@@ -7,6 +7,7 @@ import type { AiChatResponse, AiUiAction } from '@/app/actions'
 import { fmtPeriodo } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import AssistantResponseRenderer from '@/components/ai/AssistantResponseRenderer'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -440,6 +441,8 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
                 const isUser = message.role === 'user'
                 const action = message.response?.ui_action
                 const citations = message.response?.citations ?? []
+                const blocks = message.response?.blocks
+                const hasBlocks = !isUser && (blocks?.length ?? 0) > 0
                 const clarification = message.response?.clarification
                 const isLastMessage = index === messages.length - 1
                 const clarificationOptions =
@@ -452,18 +455,16 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
                       </span>
                     )}
                     <div
-                      className={`flex min-w-0 max-w-[82%] flex-col gap-2 rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
+                      className={`flex min-w-0 flex-col gap-2 rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
                         isUser
-                          ? 'rounded-br-md bg-blue-600 text-white'
-                          : 'rounded-bl-md border border-gray-200 bg-white text-gray-800'
+                          ? 'max-w-[82%] rounded-br-md bg-blue-600 text-white'
+                          : `${hasBlocks ? 'w-full max-w-[95%]' : 'max-w-[82%]'} rounded-bl-md border border-gray-200 bg-white text-gray-800`
                       }`}
                     >
-                      <p className="break-words whitespace-pre-wrap leading-relaxed">{message.content}</p>
-
-                      {citations.length > 0 && (
-                        <p className={`text-[11px] ${isUser ? 'text-blue-100' : 'text-gray-400'}`}>
-                          Fuente: {citations.map(c => c.source).join(', ')}
-                        </p>
+                      {isUser ? (
+                        <p className="break-words whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                      ) : (
+                        <AssistantResponseRenderer text={message.content} blocks={blocks} citations={citations} />
                       )}
 
                       {action && hasActionPeriods(action) && (

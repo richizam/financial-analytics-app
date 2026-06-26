@@ -10,6 +10,7 @@ from backend.app.core.config import Settings
 from backend.app.domain.financial import FinancialService
 
 from .csv_profile import TARGET_SCHEMA, build_csv_profile, heuristic_mapping, safe_json_dumps
+from .presentation import build_blocks
 from .prompts import CSV_MAPPING_PROMPT, SYSTEM_PROMPT
 from .tools import AiContext, AiToolExecutor, AiToolValidationError
 from .xai_client import XaiClient, XaiClientError, XaiConfigurationError
@@ -199,6 +200,7 @@ class AiAssistantService:
             "ui_action": ui_action,
             "citations": citations,
             "executed_tools": [str(result.get("tool_name")) for result in executed_results],
+            "blocks": build_blocks(executed_results),
             "provider": "xai",
             "model": self.xai_client.model,
         }

@@ -4,8 +4,79 @@
 import type { AnomaliesData } from '@/lib/anomalies'
 import type { ESF, ERI } from '@/lib/statements'
 import type { MetricsResult } from '@/lib/metrics'
+import type { MetricFormat } from '@/lib/ai-format'
 
 export type { AnomaliesData }
+
+// --- Structured presentation blocks for assistant answers --------------------
+// The backend derives these from real tool results so the UI can format every
+// financial number itself (Card/Badge/Table/Alert) instead of trusting markdown.
+
+export interface AiKeyMetric {
+  key: string
+  label: string
+  value: number | null
+  format: MetricFormat
+}
+
+export interface AiKeyMetricsBlock {
+  type: 'key_metrics'
+  title: string
+  ruc?: string | null
+  periods?: string[]
+  metrics: AiKeyMetric[]
+}
+
+export interface AiComparisonRow {
+  key: string
+  label: string
+  a: number | null
+  b: number | null
+  delta: number | null
+  deltaPct: number | null
+  format: MetricFormat
+}
+
+export interface AiComparisonBlock {
+  type: 'comparison'
+  title: string
+  periodsA?: string[]
+  periodsB?: string[]
+  rows: AiComparisonRow[]
+}
+
+export interface AiTableColumn {
+  key: string
+  label: string
+  format?: MetricFormat
+  align?: 'left' | 'right'
+}
+
+export interface AiTableBlock {
+  type: 'table'
+  title: string
+  columns: AiTableColumn[]
+  rows: Array<Record<string, string | number | null>>
+}
+
+export interface AiCaveatBlock {
+  type: 'caveat'
+  level: 'warning' | 'info'
+  message: string
+}
+
+export interface AiInsightBlock {
+  type: 'insight'
+  title: string
+  items: Array<{ label: string; value: number | null; format: MetricFormat }>
+}
+
+export type AiResponseBlock =
+  | AiKeyMetricsBlock
+  | AiComparisonBlock
+  | AiTableBlock
+  | AiCaveatBlock
+  | AiInsightBlock
 
 export interface CuentaOption { codCuenta: string; nombreCuenta: string }
 
@@ -113,6 +184,9 @@ export interface AiChatResponse {
   executed_tools: string[]
   provider: string
   model?: string
+  // Structured blocks derived from tool results; the UI renders these instead of
+  // relying on markdown to format financial numbers. Empty/absent for plain chat.
+  blocks?: AiResponseBlock[]
   // Present when the assistant pauses to ask for missing info (LangGraph path).
   clarification?: AiClarification | null
   // Opaque per-thread id to send back on the next turn (and as `resume` target).
