@@ -22,11 +22,13 @@ class FakeModel:
     def __init__(self, scripted: list[AIMessage]) -> None:
         self.scripted = list(scripted)
         self.calls = 0
+        self.seen_messages: list[list[str]] = []
 
     def bind_tools(self, specs: Any, **kwargs: Any) -> "FakeModel":
         return self
 
     def invoke(self, messages: Any, config: Any = None) -> AIMessage:
+        self.seen_messages.append([str(getattr(message, "content", "")) for message in messages])
         message = self.scripted[min(self.calls, len(self.scripted) - 1)]
         self.calls += 1
         return message
@@ -66,6 +68,24 @@ class FakeExecutor:
         }
 
 
+class UiExecutor(FakeExecutor):
+    def execute(self, name: str, args: Any, context: AiContext) -> dict[str, Any]:
+        self.calls += 1
+        return {
+            "tool_name": name,
+            "result_id": "render1",
+            "status": "success",
+            "source": "frontend_instruction",
+            "ui_action": {
+                "type": "render_dashboard",
+                "dashboard_id": "anomalies",
+                "href": "/anomalies",
+                "ruc": RUC,
+                "periodos": ["202501"],
+            },
+        }
+
+
 def _ctx() -> AiContext:
     return AiContext(
         selected_ruc=RUC,
@@ -77,6 +97,10 @@ def _ctx() -> AiContext:
 
 def _tool_call_message() -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": "getAnomalies", "args": {}, "id": "call_1"}])
+
+
+def _render_call_message() -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": "renderDashboard", "args": {}, "id": "call_render"}])
 
 
 # --- orchestrator-level tests ------------------------------------------------
@@ -144,11 +168,77 @@ def test_thread_appends_only_new_message_on_second_turn():
 
     assert first["message"] == "Primera respuesta."
     assert second["message"] == "Segunda respuesta."
-    # State accumulated across turns: sys + hola + ai1 + y ahora? + ai2 == 5 messages.
+    # State accumulated across turns: sys + hola + ai1 + refreshed sys + y ahora? + ai2.
     snapshot = orch.graph.get_state(
         {"configurable": {"thread_id": "shared", "executor": FakeExecutor(), "context": ctx, "model": model}}
     )
-    assert len(snapshot.values["messages"]) == 5
+    assert len(snapshot.values["messages"]) == 6
+
+
+def test_existing_thread_receives_fresh_app_context():
+    model = FakeModel([AIMessage(content="Primera respuesta."), AIMessage(content="Segunda respuesta.")])
+    orch = LangGraphOrchestrator(Settings(), model=model)
+    ctx = _ctx()
+
+    orch.chat(
+        input_items=[
+            {"role": "system", "content": "ctx: periodo 2025"},
+            {"role": "user", "content": "hola"},
+        ],
+        context=ctx,
+        executor=FakeExecutor(),
+        thread_id="context-thread",
+        new_message="hola",
+    )
+    orch.chat(
+        input_items=[
+            {"role": "system", "content": "ctx: periodo 2026"},
+            {"role": "assistant", "content": "old visible history should not be replayed"},
+            {"role": "user", "content": "y ahora?"},
+        ],
+        context=ctx,
+        executor=FakeExecutor(),
+        thread_id="context-thread",
+        new_message="y ahora?",
+    )
+
+    second_turn = model.seen_messages[1]
+    assert second_turn[-2:] == ["ctx: periodo 2026", "y ahora?"]
+    assert "old visible history should not be replayed" not in second_turn
+
+
+def test_second_turn_does_not_reuse_previous_ui_action():
+    model = FakeModel(
+        [
+            _render_call_message(),
+            AIMessage(content="Abriendo anomalias."),
+            AIMessage(content="Esto significa que debes revisar los outliers."),
+        ]
+    )
+    orch = LangGraphOrchestrator(Settings(), model=model)
+    ctx = _ctx()
+
+    first = orch.chat(
+        input_items=[{"role": "user", "content": "abre anomalias"}],
+        context=ctx,
+        executor=UiExecutor(),
+        thread_id="ui-thread",
+        new_message="abre anomalias",
+    )
+    second = orch.chat(
+        input_items=[{"role": "user", "content": "que significa esto?"}],
+        context=ctx,
+        executor=UiExecutor(),
+        thread_id="ui-thread",
+        new_message="que significa esto?",
+    )
+
+    assert first["ui_action"]["dashboard_id"] == "anomalies"
+    assert first["executed_tools"] == ["renderDashboard"]
+    assert second["message"] == "Esto significa que debes revisar los outliers."
+    assert second["ui_action"] is None
+    assert second["executed_tools"] == []
+    assert second["citations"] == []
 
 
 def _clarify_message() -> AIMessage:
@@ -262,3 +352,25 @@ def test_local_intent_still_short_circuits_under_langgraph_flag():
     # Fast path answered without ever invoking the model.
     assert model.calls == 0
     assert out["provider"] != "langgraph"
+
+
+def test_clarification_resume_is_not_stolen_by_local_intent():
+    settings = Settings(ai_orchestrator="langgraph")
+    model = FakeModel([_clarify_message(), AIMessage(content="Retomo la aclaracion con 2025.")])
+    orch = LangGraphOrchestrator(settings, model=model)
+    ai = AiAssistantService(_financial_service(), settings, orchestrator=orch)
+
+    paused = ai.chat("necesito un analisis", RUC, ["202501"], [], thread_id="resume-local")
+    resumed = ai.chat(
+        "muestrame anomalias de 2025",
+        RUC,
+        ["202501"],
+        [],
+        thread_id="resume-local",
+        resume="muestrame anomalias de 2025",
+    )
+
+    assert paused["provider"] == "clarification"
+    assert resumed["provider"] == "langgraph"
+    assert resumed["message"] == "Retomo la aclaracion con 2025."
+    assert model.calls == 2

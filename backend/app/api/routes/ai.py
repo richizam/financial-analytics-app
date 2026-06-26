@@ -38,6 +38,7 @@ def chat(
             request.conversation_summary,
             thread_id=thread_id,
             resume=request.resume,
+            workspace_id=user.workspace_id,
         )
         result.pop("thread_id", None)
         result["conversation_id"] = conversation_id

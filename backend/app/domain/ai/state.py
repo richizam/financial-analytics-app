@@ -15,6 +15,7 @@ class AgentState(TypedDict, total=False):
     ruc: str
     periodos: list[str]
     workspace_id: str
+    turn_id: str
     # operator.add so each tools-node return appends rather than overwrites.
     executed_results: Annotated[list[dict[str, Any]], operator.add]
     pending_clarification: dict[str, Any] | None

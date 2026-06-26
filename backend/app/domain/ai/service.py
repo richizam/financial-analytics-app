@@ -112,19 +112,21 @@ class AiAssistantService:
         conversation_summary: str | None = None,
         thread_id: str | None = None,
         resume: str | None = None,
+        workspace_id: str | None = None,
     ) -> dict[str, Any]:
         clean_message = message.strip()
         if not clean_message:
             raise AiToolValidationError("message is required")
 
         context = self._context(ruc, periodos)
-        local_response = self._local_intent_response(clean_message, context)
-        if local_response:
-            return local_response
+        if resume is None:
+            local_response = self._local_intent_response(clean_message, context)
+            if local_response:
+                return local_response
 
         if self.settings.ai_orchestrator == "langgraph":
             return self._chat_langgraph(
-                clean_message, context, conversation, conversation_summary, thread_id, resume
+                clean_message, context, conversation, conversation_summary, thread_id, resume, workspace_id
             )
 
         executed_results: list[dict[str, Any]] = []
@@ -209,6 +211,7 @@ class AiAssistantService:
         conversation_summary: str | None,
         thread_id: str | None,
         resume: str | None = None,
+        workspace_id: str | None = None,
     ) -> dict[str, Any]:
         import uuid
 
@@ -221,6 +224,7 @@ class AiAssistantService:
             thread_id=resolved_thread,
             new_message=message,
             resume=resume,
+            workspace_id=workspace_id,
         )
 
     def _local_intent_response(self, message: str, context: AiContext) -> dict[str, Any] | None:

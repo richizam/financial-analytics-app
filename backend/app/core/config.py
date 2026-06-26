@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -69,9 +70,11 @@ class Settings:
     xai_timeout_seconds: float = float(os.getenv("XAI_TIMEOUT_SECONDS", "45"))
 
     # Which AI orchestrator backs /ai/chat: "legacy" (hand-rolled loop) or
-    # "langgraph" (graph + checkpointer + clarification). Defaults to legacy
-    # until the LangGraph path is validated in production.
+    # "langgraph" (graph + checkpointer + clarification). The app code keeps a
+    # legacy default for non-compose/local processes; production compose sets it
+    # explicitly to langgraph.
     ai_orchestrator: str = os.getenv("AI_ORCHESTRATOR", "legacy").strip().lower()
+    langgraph_checkpoint_schema: str = os.getenv("LANGGRAPH_CHECKPOINT_SCHEMA", "app_private").strip()
 
     @property
     def api_key_required(self) -> bool:
@@ -114,6 +117,8 @@ class Settings:
             raise RuntimeError("XAI_REASONING_EFFORT must be none, low, medium, or high")
         if self.ai_orchestrator not in {"legacy", "langgraph"}:
             raise RuntimeError("AI_ORCHESTRATOR must be legacy or langgraph")
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", self.langgraph_checkpoint_schema):
+            raise RuntimeError("LANGGRAPH_CHECKPOINT_SCHEMA must be a safe PostgreSQL identifier")
 
     @property
     def checkpointer_dsn(self) -> str | None:

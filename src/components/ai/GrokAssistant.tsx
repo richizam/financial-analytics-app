@@ -27,9 +27,9 @@ const EXAMPLES = [
   { icon: AlertTriangle, text: '¿Hay anomalías en este rango?' },
 ]
 
-const MESSAGE_STORAGE_KEY = 'financial-ai-assistant-messages-v1'
-const MEMORY_STORAGE_KEY = 'financial-ai-assistant-memory-v1'
-const THREAD_STORAGE_KEY = 'financial-ai-assistant-thread-v1'
+const MESSAGE_STORAGE_KEY_PREFIX = 'financial-ai-assistant-messages-v1'
+const MEMORY_STORAGE_KEY_PREFIX = 'financial-ai-assistant-memory-v1'
+const THREAD_STORAGE_KEY_PREFIX = 'financial-ai-assistant-thread-v1'
 const MAX_STORED_MESSAGES = 30
 const ACTIVE_CONTEXT_MESSAGES = 10
 const MAX_MEMORY_ITEMS = 18
@@ -141,6 +141,10 @@ function buildConversationSummary(messages: ChatMessage[], storedMemory: string[
   return compactText(merged.map(item => `- ${item}`).join('\n'), MAX_MEMORY_SUMMARY_CHARS)
 }
 
+function scopedStorageKey(prefix: string, ruc: string): string {
+  return `${prefix}:${ruc || 'unknown'}`
+}
+
 export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onClose }: GrokAssistantProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversationMemory, setConversationMemory] = useState<string[]>([])
@@ -154,10 +158,21 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
   const conversationIdRef = useRef<string | null>(null)
   // True while the assistant is waiting for the user's answer to a clarification.
   const [awaitingClarification, setAwaitingClarification] = useState(false)
+  const messageStorageKey = useMemo(() => scopedStorageKey(MESSAGE_STORAGE_KEY_PREFIX, ruc), [ruc])
+  const memoryStorageKey = useMemo(() => scopedStorageKey(MEMORY_STORAGE_KEY_PREFIX, ruc), [ruc])
+  const threadStorageKey = useMemo(() => scopedStorageKey(THREAD_STORAGE_KEY_PREFIX, ruc), [ruc])
 
   useEffect(() => {
+    messagesRef.current = []
+    memoryRef.current = []
+    conversationIdRef.current = null
+    setMessages([])
+    setConversationMemory([])
+    setAwaitingClarification(false)
+    setError(null)
+
     try {
-      const stored = window.localStorage.getItem(MESSAGE_STORAGE_KEY)
+      const stored = window.localStorage.getItem(messageStorageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed)) {
@@ -169,10 +184,10 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
         }
       }
 
-      const storedThread = window.localStorage.getItem(THREAD_STORAGE_KEY)
+      const storedThread = window.localStorage.getItem(threadStorageKey)
       if (storedThread) conversationIdRef.current = storedThread
 
-      const storedMemory = window.localStorage.getItem(MEMORY_STORAGE_KEY)
+      const storedMemory = window.localStorage.getItem(memoryStorageKey)
       if (storedMemory) {
         const parsedMemory = JSON.parse(storedMemory)
         if (Array.isArray(parsedMemory)) {
@@ -187,7 +202,7 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
     } catch {
       // Ignore corrupt local data and start a fresh conversation.
     }
-  }, [])
+  }, [memoryStorageKey, messageStorageKey, threadStorageKey])
 
   // Keep the newest message in view as the conversation grows.
   useEffect(() => {
@@ -196,7 +211,7 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
 
   function persistMessages(nextMessages: ChatMessage[]) {
     try {
-      window.localStorage.setItem(MESSAGE_STORAGE_KEY, JSON.stringify(nextMessages.slice(-MAX_STORED_MESSAGES)))
+      window.localStorage.setItem(messageStorageKey, JSON.stringify(nextMessages.slice(-MAX_STORED_MESSAGES)))
     } catch {
       // Storage is best effort only.
     }
@@ -204,7 +219,7 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
 
   function persistMemory(nextMemory: string[]) {
     try {
-      window.localStorage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(nextMemory.slice(-MAX_MEMORY_ITEMS)))
+      window.localStorage.setItem(memoryStorageKey, JSON.stringify(nextMemory.slice(-MAX_MEMORY_ITEMS)))
     } catch {
       // Storage is best effort only.
     }
@@ -237,9 +252,9 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
     setAwaitingClarification(false)
     setError(null)
     try {
-      window.localStorage.removeItem(MESSAGE_STORAGE_KEY)
-      window.localStorage.removeItem(MEMORY_STORAGE_KEY)
-      window.localStorage.removeItem(THREAD_STORAGE_KEY)
+      window.localStorage.removeItem(messageStorageKey)
+      window.localStorage.removeItem(memoryStorageKey)
+      window.localStorage.removeItem(threadStorageKey)
     } catch {
       // Storage is best effort only.
     }
@@ -286,7 +301,7 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
         if (response.conversation_id) {
           conversationIdRef.current = response.conversation_id
           try {
-            window.localStorage.setItem(THREAD_STORAGE_KEY, response.conversation_id)
+            window.localStorage.setItem(threadStorageKey, response.conversation_id)
           } catch {
             // Storage is best effort only.
           }
@@ -326,7 +341,7 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
         if (response.conversation_id) {
           conversationIdRef.current = response.conversation_id
           try {
-            window.localStorage.setItem(THREAD_STORAGE_KEY, response.conversation_id)
+            window.localStorage.setItem(threadStorageKey, response.conversation_id)
           } catch {
             // Storage is best effort only.
           }

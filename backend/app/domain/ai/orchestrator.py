@@ -7,6 +7,7 @@ short-circuit) still runs in AiAssistantService before this is invoked.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from backend.app.core.config import Settings
@@ -29,6 +30,10 @@ def _to_lc_messages(input_items: list[dict[str, Any]]) -> list[Any]:
         else:
             messages.append(HumanMessage(content=content))
     return messages
+
+
+def _system_lc_messages(input_items: list[dict[str, Any]]) -> list[Any]:
+    return _to_lc_messages([item for item in input_items if item.get("role") == "system"])
 
 
 class LangGraphOrchestrator:
@@ -71,12 +76,17 @@ class LangGraphOrchestrator:
 
             invoke_input: Any = Command(resume=resume)
         else:
+            turn_id = uuid.uuid4().hex
             # On a thread that already has checkpointed history, append only the
-            # new user message; otherwise seed the full system+history+user input.
+            # current system context plus the new user message. This preserves
+            # conversational memory while refreshing app state (RUC/periods).
             if new_message is not None and self._thread_has_history(config):
                 from langchain_core.messages import HumanMessage
 
-                messages_in: list[Any] = [HumanMessage(content=new_message)]
+                messages_in: list[Any] = [
+                    *_system_lc_messages(input_items),
+                    HumanMessage(content=new_message),
+                ]
             else:
                 messages_in = _to_lc_messages(input_items)
 
@@ -85,6 +95,7 @@ class LangGraphOrchestrator:
                 "ruc": context.selected_ruc,
                 "periodos": list(context.selected_periodos),
                 "workspace_id": workspace_id or "",
+                "turn_id": turn_id,
                 "executed_results": [],
             }
 
@@ -129,7 +140,7 @@ class LangGraphOrchestrator:
     def _clarification_response(
         self, final_state: Any, payload: dict[str, Any], thread_id: str
     ) -> dict[str, Any]:
-        executed_results = (final_state.get("executed_results") if isinstance(final_state, dict) else None) or []
+        executed_results = self._current_turn_results(final_state if isinstance(final_state, dict) else {})
         question = payload.get("question") or "Necesito mas informacion para continuar."
         return {
             "message": question,
@@ -155,7 +166,7 @@ class LangGraphOrchestrator:
         return bool(values.get("messages"))
 
     def _finalize(self, final_state: dict[str, Any], thread_id: str) -> dict[str, Any]:
-        executed_results = final_state.get("executed_results") or []
+        executed_results = self._current_turn_results(final_state)
         message_text = self._last_text(final_state.get("messages") or [])
         if not message_text:
             message_text = "No pude generar una explicacion, pero el backend si proceso la solicitud."
@@ -186,6 +197,18 @@ class LangGraphOrchestrator:
             "model": self.settings.xai_model,
             "thread_id": thread_id,
         }
+
+    @staticmethod
+    def _current_turn_results(final_state: dict[str, Any]) -> list[dict[str, Any]]:
+        turn_id = str(final_state.get("turn_id") or "")
+        results = final_state.get("executed_results") or []
+        if not turn_id:
+            return [result for result in results if isinstance(result, dict)]
+        return [
+            result
+            for result in results
+            if isinstance(result, dict) and str(result.get("_turn_id") or "") == turn_id
+        ]
 
     @staticmethod
     def _last_text(messages: list[Any]) -> str:

@@ -50,6 +50,7 @@ def _tools_node(state: AgentState, config: dict[str, Any]) -> dict[str, Any]:
 
     tool_messages: list[ToolMessage] = []
     results: list[dict[str, Any]] = []
+    turn_id = str(state.get("turn_id") or "")
     for call in tool_calls:
         outcome = run_tool(executor, context, call["name"], call.get("args") or {})
         tool_messages.append(
@@ -60,7 +61,9 @@ def _tools_node(state: AgentState, config: dict[str, Any]) -> dict[str, Any]:
             )
         )
         if outcome.result is not None:
-            results.append(outcome.result)
+            tracked_result = dict(outcome.result)
+            tracked_result["_turn_id"] = turn_id
+            results.append(tracked_result)
 
     return {"messages": tool_messages, "executed_results": results}
 

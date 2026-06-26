@@ -10,7 +10,8 @@ services:
       BACKEND_API_KEY: ${BACKEND_API_KEY:-local-backend-key-change-me}
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to your Supabase Postgres connection string}
       DATABASE_URL_DIRECT: ${DATABASE_URL_DIRECT:-}
-      AI_ORCHESTRATOR: ${AI_ORCHESTRATOR:-legacy}
+      LANGGRAPH_CHECKPOINT_SCHEMA: ${LANGGRAPH_CHECKPOINT_SCHEMA:-app_private}
+      AI_ORCHESTRATOR: ${AI_ORCHESTRATOR:-langgraph}
       SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL to your Supabase project URL}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY to your Supabase publishable key}
       SUPABASE_AUTH_REQUIRED: "true"
