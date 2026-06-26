@@ -11,21 +11,82 @@ node-level retry.
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Any
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import SystemMessage, ToolMessage, trim_messages
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import RetryPolicy, interrupt
 
 from .state import AgentState
 from .tool_registry import CLARIFY_TOOL_NAME, build_tool_specs, run_tool
 
+_logger = logging.getLogger("backend.app.domain.ai.langgraph")
+
 # Matches the legacy `for _ in range(3)` cap: agent→tools repeated ~3×.
 RECURSION_LIMIT = 8
+
+# Recent conversation window sent to the model. System/context messages are
+# layered on top per turn (not persisted, not counted here), so token use stays
+# bounded no matter how long the persisted thread grows.
+MAX_WINDOW_MESSAGES = 14
 
 
 def _configurable(config: dict[str, Any]) -> dict[str, Any]:
     return (config or {}).get("configurable", {}) or {}
+
+
+def _trim_window(messages: list[Any]) -> list[Any]:
+    """Keep the last MAX_WINDOW_MESSAGES conversation messages without orphaning a
+    tool result from the assistant tool-call that produced it (start_on='human')."""
+    if len(messages) <= MAX_WINDOW_MESSAGES:
+        return messages
+    try:
+        return trim_messages(
+            messages,
+            max_tokens=MAX_WINDOW_MESSAGES,
+            token_counter=len,  # count messages, not tokens
+            strategy="last",
+            start_on="human",
+            include_system=False,
+            allow_partial=False,
+        )
+    except Exception:  # pragma: no cover - defensive: never block a turn on trimming
+        window = messages[-MAX_WINDOW_MESSAGES:]
+        while window and not _is_human(window[0]):
+            window = window[1:]
+        return window or messages[-1:]
+
+
+def _is_human(message: Any) -> bool:
+    return getattr(message, "type", None) == "human" or message.__class__.__name__ == "HumanMessage"
+
+
+def _dedupe_system(messages: list[Any]) -> list[Any]:
+    """Safety net: collapse duplicate system/context blocks before the model call."""
+    seen: set[str] = set()
+    out: list[Any] = []
+    for message in messages:
+        if isinstance(message, SystemMessage):
+            key = message.content if isinstance(message.content, str) else str(message.content)
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(message)
+    return out
+
+
+def _log_model_call(ai_message: Any, model_input: list[Any], elapsed_ms: float) -> None:
+    usage = getattr(ai_message, "usage_metadata", None) or {}
+    _logger.info(
+        "langgraph model call: messages=%d input_tokens=%s output_tokens=%s total_tokens=%s latency_ms=%.0f",
+        len(model_input),
+        usage.get("input_tokens"),
+        usage.get("output_tokens"),
+        usage.get("total_tokens"),
+        elapsed_ms,
+    )
 
 
 def _agent_node(state: AgentState, config: dict[str, Any]) -> dict[str, Any]:
@@ -34,9 +95,19 @@ def _agent_node(state: AgentState, config: dict[str, Any]) -> dict[str, Any]:
     executor = cfg["executor"]
     context = cfg["context"]
 
+    # System prompt + current app context come from config (rebuilt every turn),
+    # never from persisted state, so they appear exactly once and always reflect
+    # the latest RUC/periods. Persisted state holds only the conversation.
+    system_messages = cfg.get("system_messages") or []
+    window = _trim_window(state.get("messages") or [])
+    model_input = _dedupe_system([*system_messages, *window])
+
     specs = build_tool_specs(executor, context)
     bound = model.bind_tools(specs, parallel_tool_calls=False) if specs else model
-    ai_message = bound.invoke(state["messages"])
+
+    started = time.monotonic()
+    ai_message = bound.invoke(model_input)
+    _log_model_call(ai_message, model_input, (time.monotonic() - started) * 1000)
     return {"messages": [ai_message]}
 
 

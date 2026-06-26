@@ -36,6 +36,10 @@ def _system_lc_messages(input_items: list[dict[str, Any]]) -> list[Any]:
     return _to_lc_messages([item for item in input_items if item.get("role") == "system"])
 
 
+def _conversation_lc_messages(input_items: list[dict[str, Any]]) -> list[Any]:
+    return _to_lc_messages([item for item in input_items if item.get("role") in ("user", "assistant")])
+
+
 class LangGraphOrchestrator:
     def __init__(self, settings: Settings, checkpointer: Any | None = None, model: Any | None = None) -> None:
         from langgraph.checkpoint.memory import MemorySaver
@@ -60,12 +64,17 @@ class LangGraphOrchestrator:
     ) -> dict[str, Any]:
         from .graph import RECURSION_LIMIT
 
+        # System prompt + current app context are passed through config (rebuilt
+        # every turn) and layered onto the model input by the agent node. They are
+        # never written to the persisted state, so the checkpoint holds only the
+        # real conversation (user/assistant/tool) and token use stays bounded.
         config = {
             "configurable": {
                 "thread_id": thread_id,
                 "executor": executor,
                 "context": context,
                 "model": self.model,
+                "system_messages": _system_lc_messages(input_items),
             },
             "recursion_limit": RECURSION_LIMIT,
         }
@@ -77,18 +86,15 @@ class LangGraphOrchestrator:
             invoke_input: Any = Command(resume=resume)
         else:
             turn_id = uuid.uuid4().hex
-            # On a thread that already has checkpointed history, append only the
-            # current system context plus the new user message. This preserves
-            # conversational memory while refreshing app state (RUC/periods).
+            # Existing thread: append only the new user message (history is already
+            # checkpointed). New thread: seed with the conversation messages only —
+            # never the system/context blocks.
             if new_message is not None and self._thread_has_history(config):
                 from langchain_core.messages import HumanMessage
 
-                messages_in: list[Any] = [
-                    *_system_lc_messages(input_items),
-                    HumanMessage(content=new_message),
-                ]
+                messages_in: list[Any] = [HumanMessage(content=new_message)]
             else:
-                messages_in = _to_lc_messages(input_items)
+                messages_in = _conversation_lc_messages(input_items)
 
             invoke_input = {
                 "messages": messages_in,
