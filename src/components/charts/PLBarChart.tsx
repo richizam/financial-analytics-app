@@ -1,67 +1,36 @@
 'use client'
 
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
-} from 'recharts'
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import type { MonthBar } from '@/app/actions'
 import { fmtCompacto, fmtMoneda } from '@/lib/format'
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
 
-interface PLBarChartProps {
-  data: MonthBar[]
+const config: ChartConfig = {
+  ingresos: { label: 'Ingresos', color: 'var(--chart-1)' },
+  costoVentas: { label: 'Costo de ventas', color: 'var(--chart-5)' },
+  utilidadBruta: { label: 'Utilidad bruta', color: 'var(--chart-2)' },
 }
 
-const COLORS = {
-  ingresos:      '#2563eb', // azul
-  costoVentas:   '#f87171', // rojo suave
-  utilidadBruta: '#16a34a', // verde
-}
-
-function CustomTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
+export default function PLBarChart({ data }: { data: MonthBar[] }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg text-xs">
-      <p className="mb-2 font-semibold text-gray-700">{label}</p>
-      {payload.map((p: any) => (
-        <div key={p.name} className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
-          <span className="text-gray-500 w-24">{p.name}:</span>
-          <span className="font-mono font-medium text-gray-900">
-            {fmtMoneda(p.value)}
-          </span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-export default function PLBarChart({ data }: PLBarChartProps) {
-  return (
-    <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={data} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-        <XAxis
-          dataKey="label"
-          tick={{ fontSize: 11, fill: '#6b7280' }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tickFormatter={fmtCompacto}
-          tick={{ fontSize: 11, fill: '#6b7280' }}
-          axisLine={false}
-          tickLine={false}
-          width={60}
-        />
-        <Tooltip content={<CustomTooltip />} />
-        <Legend
-          wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-          formatter={(v) => <span className="text-gray-600">{v}</span>}
-        />
-        <Bar dataKey="ingresos"      name="Ingresos"       fill={COLORS.ingresos}      radius={[3,3,0,0]} maxBarSize={40} />
-        <Bar dataKey="costoVentas"   name="Costo de ventas" fill={COLORS.costoVentas}  radius={[3,3,0,0]} maxBarSize={40} />
-        <Bar dataKey="utilidadBruta" name="Utilidad bruta"  fill={COLORS.utilidadBruta} radius={[3,3,0,0]} maxBarSize={40} />
+    <ChartContainer config={config} className="h-[300px] w-full">
+      <BarChart data={data} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={8} />
+        <YAxis tickFormatter={fmtCompacto} tickLine={false} axisLine={false} width={56} />
+        <ChartTooltip content={<ChartTooltipContent formatter={(value) => fmtMoneda(Number(value))} />} />
+        <ChartLegend content={<ChartLegendContent />} />
+        <Bar dataKey="ingresos" fill="var(--color-ingresos)" radius={[4, 4, 0, 0]} maxBarSize={38} />
+        <Bar dataKey="costoVentas" fill="var(--color-costoVentas)" radius={[4, 4, 0, 0]} maxBarSize={38} />
+        <Bar dataKey="utilidadBruta" fill="var(--color-utilidadBruta)" radius={[4, 4, 0, 0]} maxBarSize={38} />
       </BarChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   )
 }

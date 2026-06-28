@@ -8,19 +8,30 @@ import type { AiUiAction, DashboardData } from '@/app/actions'
 import { fmtMoneda, fmtPct, fmtVeces, fmtPeriodo } from '@/lib/format'
 import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
 import { usePublishFinancialScope } from '@/components/layout/financial-scope'
-import KPICard from '@/components/ui/KPICard'
+import StatCard from '@/components/dashboard/StatCard'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 import RatiosTable from '@/components/tables/RatiosTable'
 import ESFView from '@/components/statements/ESFView'
 import ERIView from '@/components/statements/ERIView'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
+const chartLoading = (height: string) => () => (
+  <div className={`flex ${height} items-center justify-center rounded-lg bg-muted/40 text-sm text-muted-foreground`}>
+    Cargando gráfico…
+  </div>
+)
 
 const PLBarChart = dynamic(() => import('@/components/charts/PLBarChart'), {
   ssr: false,
-  loading: () => (
-    <div className="flex h-[300px] items-center justify-center rounded-lg bg-gray-50 text-sm text-gray-400">
-      Cargando grafico...
-    </div>
-  ),
+  loading: chartLoading('h-[300px]'),
+})
+const RevenueProfitChart = dynamic(() => import('@/components/charts/RevenueProfitChart'), {
+  ssr: false,
+  loading: chartLoading('h-[260px]'),
+})
+const MarginTrendChart = dynamic(() => import('@/components/charts/MarginTrendChart'), {
+  ssr: false,
+  loading: chartLoading('h-[260px]'),
 })
 
 interface DashboardProps {
@@ -245,54 +256,88 @@ export default function Dashboard({
       {!hasNoPeriods && data && (
         <>
         <main className="mx-auto max-w-7xl px-4 py-6 space-y-6">
-          {/* ── KPI Cards ── */}
+          {/* ── KPI cards ── */}
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <KPICard
-              titulo="Ingresos"
-              valor={fmtMoneda(data.eri.ingresos.total)}
-              subtitulo={periodoLabel}
+            <StatCard
+              label="Ingresos"
+              value={fmtMoneda(data.eri.ingresos.total)}
+              sub={periodoLabel}
               estado="gray"
               Icon={DollarSign}
+              spark={data.monthlyChart.map(m => m.ingresos)}
             />
-            <KPICard
-              titulo="Utilidad neta"
-              valor={fmtMoneda(data.eri.utilidadNeta)}
-              subtitulo={`Margen ${fmtPct(data.eri.margenNeto)}`}
+            <StatCard
+              label="Utilidad neta"
+              value={fmtMoneda(data.eri.utilidadNeta)}
+              sub={`Margen ${fmtPct(data.eri.margenNeto)}`}
               estado={data.metricas.rentabilidad.find(r => r.clave === 'margenNeto')?.estado ?? 'gray'}
               Icon={TrendingUp}
+              spark={data.monthlyChart.map(m => m.utilidadNeta)}
             />
-            <KPICard
-              titulo="Margen bruto"
-              valor={fmtPct(data.eri.margenBruto)}
-              subtitulo={`EBITDA ${fmtPct(data.eri.margenEbitda)}`}
+            <StatCard
+              label="Margen bruto"
+              value={fmtPct(data.eri.margenBruto)}
+              sub={`EBITDA ${fmtPct(data.eri.margenEbitda)}`}
               estado={data.metricas.rentabilidad.find(r => r.clave === 'margenBruto')?.estado ?? 'gray'}
               Icon={Percent}
+              spark={data.monthlyChart.map(m => (m.ingresos > 0 ? m.utilidadBruta / m.ingresos : 0))}
             />
-            <KPICard
-              titulo="Razón corriente"
-              valor={data.metricas.liquidez.find(r => r.clave === 'razonCorriente')?.valor != null
+            <StatCard
+              label="Razón corriente"
+              value={data.metricas.liquidez.find(r => r.clave === 'razonCorriente')?.valor != null
                 ? fmtVeces(data.metricas.liquidez.find(r => r.clave === 'razonCorriente')!.valor!)
                 : 'N/D'}
-              subtitulo="Liquidez"
+              sub="Liquidez"
               estado={data.metricas.liquidez.find(r => r.clave === 'razonCorriente')?.estado ?? 'gray'}
               Icon={Activity}
             />
           </section>
 
-          {/* ── Gráfico P&L mensual ── */}
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-xs">
-            <h2 className="mb-4 text-sm font-semibold text-gray-700">
-              Ingresos · Costo de ventas · Utilidad bruta — por mes
-            </h2>
-            {data.monthlyChart.length > 0
-              ? <PLBarChart data={data.monthlyChart} />
-              : <p className="py-12 text-center text-sm text-gray-400">Sin datos para el período seleccionado</p>
-            }
-          </section>
+          {/* ── Charts ── */}
+          {data.monthlyChart.length > 0 ? (
+            <>
+              <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Ingresos y utilidad neta</CardTitle>
+                    <CardDescription>Evolución mensual</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <RevenueProfitChart data={data.monthlyChart} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Evolución de márgenes</CardTitle>
+                    <CardDescription>Margen bruto y neto por mes</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <MarginTrendChart data={data.monthlyChart} />
+                  </CardContent>
+                </Card>
+              </section>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Ingresos · Costo de ventas · Utilidad bruta</CardTitle>
+                  <CardDescription>Comparativa mensual</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <PLBarChart data={data.monthlyChart} />
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                Sin datos para el período seleccionado
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Estados financieros en pestañas ── */}
-          <section className="rounded-xl border border-gray-200 bg-white shadow-xs">
-            <div className="flex border-b border-gray-200">
+          <Card className="overflow-hidden">
+            <div className="flex border-b border-border">
               {([
                 { id: 'eri' as TabId, label: 'Estado de Resultados (ERI)' },
                 { id: 'esf' as TabId, label: 'Situación Financiera (ESF)' },
@@ -303,7 +348,7 @@ export default function Dashboard({
                   className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === tab.id
                       ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                   }`}
                 >
                   {tab.label}
@@ -322,11 +367,11 @@ export default function Dashboard({
                 />
               )}
             </div>
-          </section>
+          </Card>
 
           {/* ── Tabla de ratios ── */}
           <section>
-            <h2 className="mb-3 text-sm font-semibold text-gray-700">Ratios financieros — Sector comercial</h2>
+            <h2 className="mb-3 text-sm font-semibold text-foreground">Ratios financieros — Sector comercial</h2>
             <RatiosTable
               metricas={data.metricas}
               esf={data.esf}
