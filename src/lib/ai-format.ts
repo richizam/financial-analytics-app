@@ -8,6 +8,7 @@ export type MetricFormat = 'currency' | 'percent' | 'ratio' | 'number' | 'intege
 
 const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 const decimal2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+const inverseDeltaMetrics = new Set(['costs', 'liabilities', 'cash_out'])
 
 export function formatMetric(value: number | null | undefined, format: MetricFormat): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
@@ -40,9 +41,13 @@ export function formatDelta(value: number | null | undefined, format: MetricForm
   }
 }
 
-export function deltaTone(value: number | null | undefined): 'positive' | 'negative' | 'neutral' {
+export function deltaTone(
+  value: number | null | undefined,
+  metricKey?: string | null,
+): 'positive' | 'negative' | 'neutral' {
   if (value === null || value === undefined || value === 0 || Number.isNaN(value)) return 'neutral'
-  return value > 0 ? 'positive' : 'negative'
+  const sign = inverseDeltaMetrics.has(metricKey ?? '') ? -value : value
+  return sign > 0 ? 'positive' : 'negative'
 }
 
 // Turn a list of YYYYMM periods into a compact label, e.g. "Ene 2025 – Dic 2025".

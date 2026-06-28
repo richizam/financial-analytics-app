@@ -240,6 +240,7 @@ export interface CompanyOverview {
   periodCount: number
   firstPeriod: string | null
   lastPeriod: string | null
+  periods?: string[]
 }
 
 export interface CompanyCloneResult {

@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { usePathname, useRouter } from 'next/navigation'
 import { Sparkles } from 'lucide-react'
-import GrokAssistant from './GrokAssistant'
 import type { AiUiAction } from '@/app/actions'
 import { buildComparativoHref, buildPeriodHref } from '@/lib/period-selection'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
@@ -15,6 +15,15 @@ interface GrokAssistantDockProps {
 }
 
 const DOCK_OPEN_KEY = 'financial-ai-assistant-open-v1'
+
+const GrokAssistant = dynamic(() => import('./GrokAssistant'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-white text-sm text-gray-500">
+      Cargando asistente...
+    </div>
+  ),
+})
 
 function actionHref(action: AiUiAction): string | null {
   if (!action.href) return null

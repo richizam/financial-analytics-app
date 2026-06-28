@@ -67,8 +67,18 @@ function KeyMetrics({ block }: { block: AiKeyMetricsBlock }) {
   )
 }
 
-function DeltaCell({ value, deltaPct, format }: { value: number | null; deltaPct: number | null; format: MetricFormat }) {
-  const tone = deltaTone(value)
+function DeltaCell({
+  value,
+  deltaPct,
+  format,
+  metricKey,
+}: {
+  value: number | null
+  deltaPct: number | null
+  format: MetricFormat
+  metricKey?: string | null
+}) {
+  const tone = deltaTone(value, metricKey)
   const Icon = tone === 'positive' ? ArrowUpRight : tone === 'negative' ? ArrowDownRight : Minus
   const color = tone === 'positive' ? 'text-emerald-600' : tone === 'negative' ? 'text-red-600' : 'text-muted-foreground'
   return (
@@ -106,7 +116,7 @@ function Comparison({ block }: { block: AiComparisonBlock }) {
               <TableCell className="text-right tabular-nums">{formatMetric(row.a, row.format)}</TableCell>
               <TableCell className="text-right tabular-nums">{formatMetric(row.b, row.format)}</TableCell>
               <TableCell className="text-right">
-                <DeltaCell value={row.delta} deltaPct={row.deltaPct} format={row.format} />
+                <DeltaCell value={row.delta} deltaPct={row.deltaPct} format={row.format} metricKey={row.key} />
               </TableCell>
             </TableRow>
           ))}
