@@ -72,3 +72,50 @@ def test_clone_rejects_empty_source(tmp_path):
 
     assert result["ok"] is False
     assert "origen" in result["error"]
+
+
+def test_companies_overview_includes_period_coverage_and_config(tmp_path):
+    storage = FileCsvStorage(tmp_path)
+    _seed_source(storage)
+    storage.upsert(DEST, "202503.csv", "Fecha,Asiento\n2025-03-05,AJ-3\n")
+    storage.upsert(
+        DEST,
+        "config.json",
+        json.dumps(
+            {
+                "ruc": DEST,
+                "razonSocial": "Destino",
+                "sector": "servicios",
+                "niifFramework": "niif_pymes",
+                "isDemo": True,
+            }
+        ),
+    )
+    service = FinancialService(storage)
+
+    overview = service.get_companies_overview()
+
+    assert overview == [
+        {
+            "ruc": SOURCE,
+            "razonSocial": "Origen",
+            "sector": "comercial",
+            "niifFramework": "",
+            "isDemo": False,
+            "periodCount": 2,
+            "firstPeriod": "202501",
+            "lastPeriod": "202502",
+            "periods": ["202501", "202502"],
+        },
+        {
+            "ruc": DEST,
+            "razonSocial": "Destino",
+            "sector": "servicios",
+            "niifFramework": "niif_pymes",
+            "isDemo": True,
+            "periodCount": 1,
+            "firstPeriod": "202503",
+            "lastPeriod": "202503",
+            "periods": ["202503"],
+        },
+    ]
