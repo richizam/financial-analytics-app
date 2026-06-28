@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Download, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { getMayorPageData, getMayorCompletoData } from '@/app/actions'
 import type { AiUiAction, MayorPageData } from '@/app/actions'
 import { fmtNumero, fmtContable } from '@/lib/format'
-import { exportarMayor, exportarMayorCompleto } from '@/lib/excel-export'
 import { buildPeriodHref } from '@/lib/period-selection'
+import { usePublishFinancialScope } from '@/components/layout/financial-scope'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
 
@@ -16,7 +16,7 @@ interface MayorViewProps {
   periodsByRuc: Record<string, string[]>
   initialRuc: string
   initialPeriods: string[]
-  initialData: MayorPageData
+  initialData: MayorPageData | null
 }
 
 export default function MayorView({
@@ -28,16 +28,42 @@ export default function MayorView({
 }: MayorViewProps) {
   const [selectedRuc, setSelectedRuc]       = useState(initialRuc)
   const [selectedPeriods, setSelectedPeriods] = useState(initialPeriods)
-  const [data, setData]                     = useState(initialData)
+  const [data, setData]                     = useState<MayorPageData | null>(initialData)
   const [isPending, startTransition]          = useTransition()
   const [isPendingCompleto, startCompleto]    = useTransition()
+  const [isLoading, setIsLoading]             = useState(false)
+  const requestIdRef                          = useRef(0)
+
+  usePublishFinancialScope(selectedRuc, selectedPeriods)
+
+  useEffect(() => {
+    if (!initialData && initialPeriods.length > 0) {
+      reload(initialRuc, initialPeriods, null)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function reload(ruc: string, periods: string[], cuenta: string | null) {
-    if (periods.length === 0) return
-    startTransition(async () => {
-      const next = await getMayorPageData(ruc, periods, cuenta)
-      setData(next)
-    })
+    const requestId = ++requestIdRef.current
+    if (periods.length === 0) {
+      setData(null)
+      setIsLoading(false)
+      return
+    }
+    setIsLoading(true)
+    void getMayorPageData(ruc, periods, cuenta)
+      .then(next => {
+        if (requestId !== requestIdRef.current) return
+        startTransition(() => setData(next))
+      })
+      .catch(error => {
+        if (requestId !== requestIdRef.current) return
+        console.error('No se pudo cargar el libro mayor', error)
+        startTransition(() => setData(null))
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setIsLoading(false)
+      })
   }
 
   function handleRucChange(ruc: string) {
@@ -52,7 +78,7 @@ export default function MayorView({
 
   function handlePeriodsChange(periods: string[]) {
     setSelectedPeriods(periods)
-    reload(selectedRuc, periods, data.selectedCuenta)
+    reload(selectedRuc, periods, data?.selectedCuenta ?? null)
   }
 
   function handleAiAction(action: AiUiAction) {
@@ -69,23 +95,28 @@ export default function MayorView({
     reload(selectedRuc, selectedPeriods, codCuenta)
   }
 
-  function handleExport() {
-    if (data.mayor) exportarMayor(selectedRuc, selectedPeriods, data.mayor)
+  async function handleExport() {
+    if (!data?.mayor) return
+    const { exportarMayor } = await import('@/lib/excel-export')
+    exportarMayor(selectedRuc, selectedPeriods, data.mayor)
   }
 
   function handleExportCompleto() {
     startCompleto(async () => {
       const majors = await getMayorCompletoData(selectedRuc, selectedPeriods)
+      const { exportarMayorCompleto } = await import('@/lib/excel-export')
       exportarMayorCompleto(selectedRuc, selectedPeriods, majors)
     })
   }
 
   const dashboardHref = buildPeriodHref('/', selectedRuc, selectedPeriods)
 
-  const { mayor, cuentas, selectedCuenta } = data
+  const mayor = data?.mayor ?? null
+  const cuentas = data?.cuentas ?? []
+  const selectedCuenta = data?.selectedCuenta ?? null
 
   return (
-    <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
+    <div className="min-h-screen bg-gray-50">
       {/* ── Header ── */}
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 shadow-xs backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
@@ -100,7 +131,7 @@ export default function MayorView({
               </Link>
               <span className="h-5 w-px bg-gray-200" />
               <h1 className="text-base font-semibold text-gray-900">Libro Mayor</h1>
-              {isPending && (
+              {(isPending || isLoading) && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
                   Cargando…
@@ -110,7 +141,7 @@ export default function MayorView({
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 onClick={handleExportCompleto}
-                disabled={isPending || isPendingCompleto}
+                disabled={isPending || isLoading || isPendingCompleto}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs transition-colors hover:bg-gray-50 disabled:opacity-50"
               >
                 <Download className="h-3.5 w-3.5" />
@@ -118,7 +149,7 @@ export default function MayorView({
               </button>
               <button
                 onClick={handleExport}
-                disabled={isPending || !mayor}
+                disabled={isPending || isLoading || !mayor}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-blue-700 disabled:opacity-50"
               >
                 <Download className="h-3.5 w-3.5" />
@@ -253,7 +284,11 @@ export default function MayorView({
           </div>
         ) : (
           <div className="rounded-xl border border-gray-200 bg-white p-16 text-center text-sm text-gray-400 shadow-xs">
-            Selecciona un período y una cuenta para ver el mayor
+            {isLoading
+              ? 'Cargando libro mayor...'
+              : selectedPeriods.length > 0
+              ? 'No hay cuentas disponibles para el periodo seleccionado.'
+              : 'Selecciona un periodo y una cuenta para ver el mayor'}
           </div>
         )}
       </main>

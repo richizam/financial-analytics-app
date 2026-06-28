@@ -1,11 +1,12 @@
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-import { getAvailableRucs, getAllPeriods, getMayorPageData } from '@/app/actions'
+import { getCompaniesOverview } from '@/app/actions'
 import MayorView from '@/components/mayor/MayorView'
 import { selectRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
 import DataAccessError from '@/components/common/DataAccessError'
+import { overviewPeriodsByRuc, overviewRucs } from '@/lib/company-overview'
 
 export default async function MayorPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
   try {
@@ -17,7 +18,8 @@ export default async function MayorPage({ searchParams }: { searchParams?: Perio
 }
 
 async function renderMayorPage(searchParams?: PeriodSearchParams) {
-  const rucs = await getAvailableRucs()
+  const companies = await getCompaniesOverview()
+  const rucs = overviewRucs(companies)
 
   if (rucs.length === 0) {
     return (
@@ -29,7 +31,7 @@ async function renderMayorPage(searchParams?: PeriodSearchParams) {
     )
   }
 
-  const periodsByRuc = await getAllPeriods(rucs)
+  const periodsByRuc = overviewPeriodsByRuc(companies)
   const { selectedRuc: defaultRuc, selectedPeriods: defaultPeriods } = selectRucAndPeriods({
     rucs,
     periodsByRuc,
@@ -37,15 +39,13 @@ async function renderMayorPage(searchParams?: PeriodSearchParams) {
     defaultRuc: rucs[0],
   })
 
-  const initialData = await getMayorPageData(defaultRuc, defaultPeriods, null)
-
   return (
     <MayorView
       allRucs={rucs}
       periodsByRuc={periodsByRuc}
       initialRuc={defaultRuc}
       initialPeriods={defaultPeriods}
-      initialData={initialData}
+      initialData={null}
     />
   )
 }

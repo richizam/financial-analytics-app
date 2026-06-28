@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { cache } from 'react'
 import { getBackendJson, postBackendJson } from '@/lib/python-backend'
 import type { CompanyCloneResult, CompanyConfig, CompanyOverview } from './types'
 
@@ -21,26 +22,12 @@ export async function getCompanyConfig(ruc: string): Promise<CompanyConfig | nul
 }
 
 // Enriched company list for the sidebar (friendly name + framework + data coverage).
+const getCompaniesOverviewCached = cache(async (): Promise<CompanyOverview[]> => {
+  return getBackendJson<CompanyOverview[]>('/companies/overview')
+})
+
 export async function getCompaniesOverview(): Promise<CompanyOverview[]> {
-  const rucs = await getAvailableRucs()
-  if (rucs.length === 0) return []
-  const periodsByRuc = await getAllPeriods(rucs)
-  const overviews: CompanyOverview[] = []
-  for (const ruc of rucs) {
-    const cfg = await getCompanyConfig(ruc)
-    const periods = periodsByRuc[ruc] ?? []
-    overviews.push({
-      ruc,
-      razonSocial: cfg?.razonSocial?.trim() || ruc,
-      sector: cfg?.sector ?? '',
-      niifFramework: cfg?.niifFramework ?? '',
-      isDemo: Boolean(cfg?.isDemo),
-      periodCount: periods.length,
-      firstPeriod: periods[0] ?? null,
-      lastPeriod: periods.length ? periods[periods.length - 1] : null,
-    })
-  }
-  return overviews
+  return getCompaniesOverviewCached()
 }
 
 export async function cloneCompany(input: {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { getNotasData } from '@/app/actions'
@@ -9,6 +9,7 @@ import type { StatementItem } from '@/lib/statements'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
 import { fmtPeriodo, fmtNumero } from '@/lib/format'
 import { buildPeriodHref } from '@/lib/period-selection'
+import { usePublishFinancialScope } from '@/components/layout/financial-scope'
 import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
 
 interface NotasViewProps {
@@ -470,13 +471,39 @@ export default function NotasView({
   const [selectedPeriods, setSelectedPeriods] = useState(initialPeriods)
   const [data, setData]                     = useState(initialData)
   const [isPending, startTransition]          = useTransition()
+  const [isLoading, setIsLoading]             = useState(false)
+  const requestIdRef                          = useRef(0)
+
+  usePublishFinancialScope(selectedRuc, selectedPeriods)
+
+  useEffect(() => {
+    if (!initialData && initialPeriods.length > 0) {
+      reload(initialRuc, initialPeriods)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function reload(ruc: string, periods: string[]) {
-    if (periods.length === 0) return
-    startTransition(async () => {
-      const next = await getNotasData(ruc, periods)
-      setData(next)
-    })
+    const requestId = ++requestIdRef.current
+    if (periods.length === 0) {
+      setData(null)
+      setIsLoading(false)
+      return
+    }
+    setIsLoading(true)
+    void getNotasData(ruc, periods)
+      .then(next => {
+        if (requestId !== requestIdRef.current) return
+        startTransition(() => setData(next))
+      })
+      .catch(error => {
+        if (requestId !== requestIdRef.current) return
+        console.error('No se pudieron cargar las notas NIIF', error)
+        startTransition(() => setData(null))
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setIsLoading(false)
+      })
   }
 
   function handleRucChange(ruc: string) {
@@ -509,7 +536,7 @@ export default function NotasView({
   const dashboardHref = buildPeriodHref('/', selectedRuc, selectedPeriods)
 
   return (
-    <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
+    <div className="min-h-screen bg-gray-50">
       {/* Barra superior — se oculta al imprimir */}
       <header className="print:hidden sticky top-0 z-10 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-xs backdrop-blur sm:px-6">
         <div className="mx-auto max-w-5xl">
@@ -526,7 +553,8 @@ export default function NotasView({
             </div>
             <button
               onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-blue-700"
+              disabled={isLoading || !data}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-blue-700 disabled:opacity-50"
             >
               <Printer className="h-3.5 w-3.5" />
               Imprimir / PDF
@@ -559,7 +587,11 @@ export default function NotasView({
             <NotasDocumento data={data} />
           ) : (
             <div className="text-center py-20 text-sm text-gray-400">
-              Selecciona un RUC y período para generar las notas.
+              {isLoading
+                ? 'Generando notas NIIF...'
+                : selectedPeriods.length > 0
+                ? 'No hay datos para generar las notas.'
+                : 'Selecciona un RUC y periodo para generar las notas.'}
             </div>
           )}
         </div>

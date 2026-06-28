@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Download, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { getComparativoData } from '@/app/actions'
@@ -8,9 +8,9 @@ import type { AiUiAction, ComparativoData, DashboardData } from '@/app/actions'
 import type { Ratio } from '@/lib/metrics'
 import { fmtMoneda, fmtPct, fmtVeces, fmtDias, fmtPeriodo } from '@/lib/format'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
-import { exportarComparativo } from '@/lib/excel-export'
 import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
 import { buildPeriodHref, previousComparablePeriods } from '@/lib/period-selection'
+import { usePublishFinancialScope } from '@/components/layout/financial-scope'
 
 interface ComparativoViewProps {
   allRucs: string[]
@@ -339,13 +339,40 @@ export default function ComparativoView({
   const [periodosB, setPeriodosB]           = useState(initialPeriodosB)
   const [data, setData]                     = useState(initialData)
   const [isPending, startTransition]        = useTransition()
+  const [isLoading, setIsLoading]           = useState(false)
+  const requestIdRef                        = useRef(0)
+
+  // Keep the sidebar in sync — use período B (the most recent) as the active scope.
+  usePublishFinancialScope(selectedRuc, periodosB)
+
+  useEffect(() => {
+    if (!initialData && initialPeriodosA.length > 0 && initialPeriodosB.length > 0) {
+      reload(initialRuc, initialPeriodosA, initialPeriodosB)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function reload(ruc: string, pA: string[], pB: string[]) {
-    if (pA.length === 0 || pB.length === 0) return
-    startTransition(async () => {
-      const next = await getComparativoData(ruc, pA, pB)
-      if (next) setData(next)
-    })
+    const requestId = ++requestIdRef.current
+    if (pA.length === 0 || pB.length === 0) {
+      setData(null)
+      setIsLoading(false)
+      return
+    }
+    setIsLoading(true)
+    void getComparativoData(ruc, pA, pB)
+      .then(next => {
+        if (requestId !== requestIdRef.current) return
+        startTransition(() => setData(next))
+      })
+      .catch(error => {
+        if (requestId !== requestIdRef.current) return
+        console.error('No se pudo cargar el comparativo', error)
+        startTransition(() => setData(null))
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setIsLoading(false)
+      })
   }
 
   function handleRucChange(ruc: string) {
@@ -386,8 +413,9 @@ export default function ComparativoView({
     reload(nextRuc, nextA, nextB)
   }
 
-  function handleExport() {
+  async function handleExport() {
     if (!data) return
+    const { exportarComparativo } = await import('@/lib/excel-export')
     exportarComparativo(selectedRuc, periodosA, periodosB, data.a, data.b)
   }
 
@@ -397,7 +425,7 @@ export default function ComparativoView({
   const dashboardHref = buildPeriodHref('/', selectedRuc, periodosB.length > 0 ? periodosB : periodosA)
 
   return (
-    <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 shadow-xs backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
@@ -412,7 +440,7 @@ export default function ComparativoView({
               </Link>
               <span className="h-5 w-px bg-gray-200" />
               <h1 className="text-base font-semibold text-gray-900">Comparativo de períodos</h1>
-              {isPending && (
+              {(isPending || isLoading) && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
                   Actualizando…
@@ -421,7 +449,7 @@ export default function ComparativoView({
             </div>
             <button
               onClick={handleExport}
-              disabled={isPending || !data}
+                disabled={isPending || isLoading || !data}
               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-blue-700 disabled:opacity-50"
             >
               <Download className="h-3.5 w-3.5" />
@@ -464,7 +492,13 @@ export default function ComparativoView({
 
         {!data ? (
           <div className="rounded-xl border border-gray-200 bg-white p-10 text-center shadow-xs">
-            <p className="text-sm text-gray-500">Selecciona dos períodos para comparar</p>
+            <p className="text-sm text-gray-500">
+              {isLoading
+                ? 'Cargando comparativo...'
+                : periodosA.length > 0 && periodosB.length > 0
+                ? 'No hay datos para comparar en los periodos seleccionados.'
+                : 'Selecciona dos periodos para comparar'}
+            </p>
           </div>
         ) : (
           <>

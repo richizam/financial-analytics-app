@@ -1,21 +1,28 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
+  BookOpen,
   Building2,
   CalendarRange,
   Check,
   ChevronsUpDown,
-  FlaskConical,
+  Download,
+  FileText,
+  GitCompare,
+  LayoutDashboard,
+  Loader2,
   type LucideIcon,
   LogOut,
   Plus,
+  ShieldAlert,
   Upload,
 } from 'lucide-react'
 import { fmtPeriodo } from '@/lib/format'
-import { buildPeriodHref } from '@/lib/period-selection'
-import { seedDemoCompanies, type CompanyOverview } from '@/app/actions'
+import { buildPeriodHref, parsePeriodParam } from '@/lib/period-selection'
+import { getDashboardData, type CompanyOverview } from '@/app/actions'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -28,6 +35,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
+import { useFinancialScope } from './financial-scope'
 
 const SECTOR_LABELS: Record<string, string> = {
   comercial: 'Comercial',
@@ -47,6 +56,15 @@ const NIIF_LABELS: Record<string, string> = {
   niif_pymes: 'NIIF Pymes',
   rimpe: 'RIMPE',
 }
+
+// Primary navigation — the analysis views, ordered by typical workflow.
+const NAV_ITEMS: { label: string; href: string; icon: LucideIcon; isActive: (path: string) => boolean }[] = [
+  { label: 'Resumen', href: '/', icon: LayoutDashboard, isActive: path => path === '/' },
+  { label: 'Comparativo', href: '/comparativo', icon: GitCompare, isActive: path => path.startsWith('/comparativo') },
+  { label: 'Anomalías', href: '/anomalies', icon: ShieldAlert, isActive: path => path.startsWith('/anomalies') },
+  { label: 'Libro Mayor', href: '/mayor', icon: BookOpen, isActive: path => path.startsWith('/mayor') },
+  { label: 'Notas NIIF', href: '/notas', icon: FileText, isActive: path => path.startsWith('/notas') },
+]
 
 function initials(value: string): string {
   const parts = value.trim().split(/\s+/).slice(0, 2)
@@ -71,12 +89,17 @@ export function Sidebar({
   onNavigate?: () => void
 }) {
   const router = useRouter()
+  const pathname = usePathname() ?? '/'
   const searchParams = useSearchParams()
-  const [isSeeding, startSeed] = useTransition()
-  const [seedMsg, setSeedMsg] = useState<string | null>(null)
+  const scope = useFinancialScope()
+  const [isExporting, setIsExporting] = useState(false)
 
-  const activeRuc = searchParams.get('ruc') ?? companies[0]?.ruc ?? ''
-  const periodos = (searchParams.get('periodos') ?? '').split(',').filter(Boolean)
+  // Live scope wins (the dashboard/feature views publish their selection); the
+  // URL is the fallback so links stay correct before any view has mounted.
+  const activeRuc = scope?.ruc || searchParams.get('ruc') || companies[0]?.ruc || ''
+  const periodos = scope?.periodos.length
+    ? scope.periodos
+    : parsePeriodParam(searchParams.get('periodos') ?? undefined)
   const active = companies.find(company => company.ruc === activeRuc) ?? companies[0]
 
   const contextLabel = useMemo(() => {
@@ -88,6 +111,8 @@ export function Sidebar({
     return 'Sin periodo seleccionado'
   }, [periodos, active])
 
+  const canExport = Boolean(activeRuc) && periodos.length > 0
+
   function selectCompany(ruc: string) {
     onNavigate?.()
     router.push(buildPeriodHref('/', ruc, []))
@@ -98,25 +123,24 @@ export function Sidebar({
     router.push(href)
   }
 
-  function handleSeed() {
-    setSeedMsg(null)
-    startSeed(async () => {
-      try {
-        const result = await seedDemoCompanies()
-        if (!result.ok) {
-          setSeedMsg(result.error ?? 'No se pudieron cargar los datos demo')
-          return
-        }
-        setSeedMsg(
-          result.created.length > 0
-            ? `Listo · ${result.created.length} empresa(s) demo añadida(s)`
-            : 'Las empresas demo ya existían',
-        )
-        router.refresh()
-      } catch (error) {
-        setSeedMsg(error instanceof Error ? error.message : String(error))
+  async function handleExport() {
+    if (!canExport || isExporting) return
+    setIsExporting(true)
+    try {
+      // Reuse the dashboard's loaded statements when available; otherwise fetch.
+      const data =
+        scope?.data && scope.ruc === activeRuc
+          ? scope.data
+          : await getDashboardData(activeRuc, periodos)
+      if (data) {
+        const { exportarExcel } = await import('@/lib/excel-export')
+        exportarExcel(activeRuc, periodos, data.eri, data.esf, data.metricas)
       }
-    })
+    } catch (error) {
+      console.error('No se pudo exportar el resumen financiero', error)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   async function handleSignOut() {
@@ -187,9 +211,6 @@ export function Sidebar({
             <DropdownMenuItem onClick={() => goTo('/setup')}>
               <Plus className="h-4 w-4" /> Añadir empresa
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleSeed} disabled={isSeeding}>
-              <FlaskConical className="h-4 w-4" /> {isSeeding ? 'Cargando…' : 'Cargar empresas demo'}
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -226,23 +247,55 @@ export function Sidebar({
 
       <Separator />
 
-      {/* ── Data actions ── */}
-      <div className="px-3 py-3">
-        <p className="px-1 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-400">Datos</p>
-        <nav className="space-y-1">
-          <SidebarAction icon={Plus} label="Nueva empresa" onClick={() => goTo('/setup')} />
-          <SidebarAction icon={Upload} label="Importar CSV" onClick={() => goTo('/upload')} />
-          <SidebarAction
-            icon={FlaskConical}
-            label={isSeeding ? 'Cargando demo…' : 'Cargar empresas demo'}
-            onClick={handleSeed}
-            disabled={isSeeding}
-          />
-        </nav>
-        {seedMsg && <p className="mt-2 px-1 text-xs text-gray-500">{seedMsg}</p>}
-      </div>
+      {/* ── Primary navigation ── */}
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
+        <p className="px-1 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-400">Análisis</p>
+        {NAV_ITEMS.map(item => {
+          const activeItem = item.isActive(pathname)
+          return (
+            <Link
+              key={item.href}
+              href={buildPeriodHref(item.href, activeRuc, periodos)}
+              // Pages are force-dynamic, so prefetch would trigger a full
+              // server render (rucs + periods + per-company config + data) of
+              // every route in the background. Disable it — navigate on click.
+              prefetch={false}
+              onClick={() => onNavigate?.()}
+              aria-current={activeItem ? 'page' : undefined}
+              className={cn(
+                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+                activeItem
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-700 hover:bg-white hover:text-blue-700',
+              )}
+            >
+              <span
+                className={cn(
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors',
+                  activeItem ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30' : 'bg-blue-50 text-blue-600',
+                )}
+              >
+                <item.icon className="h-4 w-4" />
+              </span>
+              {item.label}
+            </Link>
+          )
+        })}
 
-      <div className="mt-auto" />
+        <Separator className="my-2.5" />
+
+        <p className="px-1 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-400">Acciones</p>
+        <SidebarButton
+          icon={isExporting ? Loader2 : Download}
+          iconClassName={isExporting ? 'animate-spin' : undefined}
+          label={isExporting ? 'Exportando…' : 'Exportar a Excel'}
+          onClick={handleExport}
+          disabled={!canExport || isExporting}
+        />
+        <SidebarButton icon={Upload} label="Importar CSV" onClick={() => goTo('/upload')} />
+        <SidebarButton icon={Plus} label="Nueva empresa" onClick={() => goTo('/setup')} />
+      </nav>
+
       <Separator />
 
       {/* ── User footer ── */}
@@ -278,13 +331,15 @@ export function Sidebar({
   )
 }
 
-function SidebarAction({
+function SidebarButton({
   icon: Icon,
+  iconClassName,
   label,
   onClick,
   disabled,
 }: {
   icon: LucideIcon
+  iconClassName?: string
   label: string
   onClick: () => void
   disabled?: boolean
@@ -294,10 +349,10 @@ function SidebarAction({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-gray-700 transition hover:bg-white hover:text-blue-700 disabled:opacity-60"
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-700"
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-        <Icon className="h-4 w-4" />
+        <Icon className={cn('h-4 w-4', iconClassName)} />
       </span>
       {label}
     </button>

@@ -1,15 +1,25 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { ArrowLeft, AlertTriangle, CheckCircle } from 'lucide-react'
 import { getAnomaliesData } from '@/app/actions'
 import type { AiUiAction, AnomaliesData } from '@/app/actions'
 import { fmtNumero, fmtPeriodo } from '@/lib/format'
 import { buildPeriodHref } from '@/lib/period-selection'
+import { usePublishFinancialScope } from '@/components/layout/financial-scope'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
-import BenfordChart from '@/components/anomalies/BenfordChart'
 import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
+
+const BenfordChart = dynamic(() => import('@/components/anomalies/BenfordChart'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[260px] items-center justify-center rounded-lg bg-gray-50 text-sm text-gray-400">
+      Cargando grafico...
+    </div>
+  ),
+})
 
 interface AnomaliesViewProps {
   allRucs: string[]
@@ -52,13 +62,39 @@ export default function AnomaliesView({
   const [selectedPeriods, setSelectedPeriods] = useState(initialPeriods)
   const [data, setData]                       = useState(initialData)
   const [isPending, startTransition]          = useTransition()
+  const [isLoading, setIsLoading]             = useState(false)
+  const requestIdRef                          = useRef(0)
+
+  usePublishFinancialScope(selectedRuc, selectedPeriods)
+
+  useEffect(() => {
+    if (!initialData && initialPeriods.length > 0) {
+      reload(initialRuc, initialPeriods)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function reload(ruc: string, periods: string[]) {
-    if (periods.length === 0) return
-    startTransition(async () => {
-      const next = await getAnomaliesData(ruc, periods)
-      setData(next)
-    })
+    const requestId = ++requestIdRef.current
+    if (periods.length === 0) {
+      setData(null)
+      setIsLoading(false)
+      return
+    }
+    setIsLoading(true)
+    void getAnomaliesData(ruc, periods)
+      .then(next => {
+        if (requestId !== requestIdRef.current) return
+        startTransition(() => setData(next))
+      })
+      .catch(error => {
+        if (requestId !== requestIdRef.current) return
+        console.error('No se pudo cargar el analisis de anomalias', error)
+        startTransition(() => setData(null))
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setIsLoading(false)
+      })
   }
 
   function handleRucChange(ruc: string) {
@@ -95,7 +131,7 @@ export default function AnomaliesView({
     : '—'
 
   return (
-    <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
+    <div className="min-h-screen bg-gray-50">
 
       {/* ── Header ── */}
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 shadow-xs backdrop-blur">
@@ -108,7 +144,7 @@ export default function AnomaliesView({
               </Link>
               <span className="h-5 w-px bg-gray-200" />
               <h1 className="text-base font-semibold text-gray-900">Detección de Anomalías</h1>
-              {isPending && (
+              {(isPending || isLoading) && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
                   Analizando…
@@ -133,7 +169,11 @@ export default function AnomaliesView({
       <main className="mx-auto max-w-7xl px-4 py-6 space-y-6">
         {!data ? (
           <div className="rounded-xl border border-gray-200 bg-white p-16 text-center text-sm text-gray-400 shadow-xs">
-            Selecciona un período para analizar
+            {isLoading
+              ? 'Analizando anomalias...'
+              : selectedPeriods.length > 0
+              ? 'No hay datos para el periodo seleccionado.'
+              : 'Selecciona un periodo para analizar'}
           </div>
         ) : (
           <>

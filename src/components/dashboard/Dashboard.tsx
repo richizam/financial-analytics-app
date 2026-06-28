@@ -1,20 +1,27 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
-import Link from 'next/link'
-import { TrendingUp, DollarSign, Percent, Activity, Download, BookOpen, ShieldAlert, GitCompare, ArrowLeft, FolderOpen, FileText } from 'lucide-react'
+import { useState, useTransition, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
+import { TrendingUp, DollarSign, Percent, Activity, ArrowLeft, FolderOpen } from 'lucide-react'
 import { getDashboardData } from '@/app/actions'
 import type { AiUiAction, DashboardData } from '@/app/actions'
 import { fmtMoneda, fmtPct, fmtVeces, fmtPeriodo } from '@/lib/format'
-import { exportarExcel } from '@/lib/excel-export'
-import { buildPeriodHref } from '@/lib/period-selection'
 import GrokAssistantDock from '@/components/ai/GrokAssistantDock'
+import { usePublishFinancialScope } from '@/components/layout/financial-scope'
 import KPICard from '@/components/ui/KPICard'
 import PeriodSelector from '@/components/dashboard/PeriodSelector'
-import PLBarChart from '@/components/charts/PLBarChart'
 import RatiosTable from '@/components/tables/RatiosTable'
 import ESFView from '@/components/statements/ESFView'
 import ERIView from '@/components/statements/ERIView'
+
+const PLBarChart = dynamic(() => import('@/components/charts/PLBarChart'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[300px] items-center justify-center rounded-lg bg-gray-50 text-sm text-gray-400">
+      Cargando grafico...
+    </div>
+  ),
+})
 
 interface DashboardProps {
   allRucs: string[]
@@ -105,23 +112,49 @@ export default function Dashboard({
   const [data, setData]                     = useState<DashboardData | null>(initialData)
   const [activeTab, setActiveTab]           = useState<TabId>('eri')
   const [isPending, startTransition]        = useTransition()
+  const [isLoading, setIsLoading]           = useState(false)
+  const requestIdRef                        = useRef(0)
+  const setupAppliedRef                     = useRef(false)
 
   // After /setup, select the newly created company
   useEffect(() => {
     const pendingRuc = sessionStorage.getItem('setup_ruc')
     if (pendingRuc && allRucs.includes(pendingRuc)) {
       sessionStorage.removeItem('setup_ruc')
+      setupAppliedRef.current = true
       handleRucChange(pendingRuc)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (!setupAppliedRef.current && !initialData && initialPeriods.length > 0) {
+      reload(initialRuc, initialPeriods)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function reload(ruc: string, periods: string[]) {
-    if (periods.length === 0) return
-    startTransition(async () => {
-      const next = await getDashboardData(ruc, periods)
-      if (next) setData(next)
-    })
+    const requestId = ++requestIdRef.current
+    if (periods.length === 0) {
+      setData(null)
+      setIsLoading(false)
+      return
+    }
+    setIsLoading(true)
+    void getDashboardData(ruc, periods)
+      .then(next => {
+        if (requestId !== requestIdRef.current) return
+        startTransition(() => setData(next))
+      })
+      .catch(error => {
+        if (requestId !== requestIdRef.current) return
+        console.error('No se pudo cargar el dashboard', error)
+        startTransition(() => setData(null))
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setIsLoading(false)
+      })
   }
 
   function handleRucChange(ruc: string) {
@@ -149,12 +182,15 @@ export default function Dashboard({
     reload(nextRuc, nextPeriods)
   }
 
+  // Share the active company + periods (and loaded data) with the sidebar so its
+  // navigation links and global export reflect the current dashboard selection.
+  usePublishFinancialScope(selectedRuc, selectedPeriods, data)
+
   // ── Derived state ──
   const hasNoPeriods = (periodsByRuc[selectedRuc] ?? []).length === 0
 
   // First RUC (other than current) that has CSV data — used for "← Volver" button
   const fallbackRuc = allRucs.find(r => r !== selectedRuc && (periodsByRuc[r] ?? []).length > 0) ?? null
-  const periodHref = (pathname: string) => buildPeriodHref(pathname, selectedRuc, selectedPeriods)
 
   const periodoLabel = selectedPeriods.length === 1
     ? fmtPeriodo(selectedPeriods[0])
@@ -163,60 +199,21 @@ export default function Dashboard({
     : '—'
 
   return (
-    <div className={`min-h-screen bg-gray-50 transition-opacity duration-200 ${isPending ? 'opacity-60' : 'opacity-100'}`}>
+    <div className="min-h-screen bg-gray-50">
       {/* ── Header ── */}
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 shadow-xs backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
-          {/* Row 1 · title + view nav + export */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-base font-semibold text-gray-900">Resumen general</h1>
-              {isPending && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-                  Actualizando…
-                </span>
-              )}
-            </div>
-            <nav className="flex flex-wrap items-center gap-0.5">
-              <Link
-                href={periodHref('/comparativo')}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-              >
-                <GitCompare className="h-3.5 w-3.5" />
-                Comparativo
-              </Link>
-              <Link
-                href={periodHref('/anomalies')}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-              >
-                <ShieldAlert className="h-3.5 w-3.5" />
-                Anomalías
-              </Link>
-              <Link
-                href={periodHref('/mayor')}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-              >
-                <BookOpen className="h-3.5 w-3.5" />
-                Libro Mayor
-              </Link>
-              <Link
-                href={periodHref('/notas')}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                Notas NIIF
-              </Link>
-              <span className="mx-1.5 h-5 w-px bg-gray-200" />
-              <button
-                onClick={() => data && exportarExcel(selectedRuc, selectedPeriods, data.eri, data.esf, data.metricas)}
-                disabled={isPending || hasNoPeriods || !data}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs transition-colors hover:bg-blue-700 disabled:opacity-50"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Exportar
-              </button>
-            </nav>
+          {/* Row 1 · title + active context */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-base font-semibold text-gray-900">Resumen general</h1>
+            <span className="text-sm text-gray-400">·</span>
+            <span className="truncate text-sm text-gray-500">{periodoLabel}</span>
+            {(isPending || isLoading) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+                Actualizando…
+              </span>
+            )}
           </div>
           {/* Row 2 · period selector */}
           <div className="mt-3 border-t border-gray-100 pt-3">
@@ -349,6 +346,14 @@ export default function Dashboard({
             onApplyAction={handleAiAction}
           />
         </>
+      )}
+
+      {!hasNoPeriods && !data && (
+        <main className="mx-auto max-w-7xl px-4 py-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-16 text-center text-sm text-gray-400 shadow-xs">
+            {isLoading ? 'Cargando dashboard...' : 'No hay datos para el periodo seleccionado.'}
+          </div>
+        </main>
       )}
     </div>
   )

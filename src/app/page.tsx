@@ -1,13 +1,14 @@
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-import { getAvailableRucs, getAllPeriods, getDashboardData, getCompanyConfig } from './actions'
+import { getCompaniesOverview } from './actions'
 import Dashboard from '@/components/dashboard/Dashboard'
 import Link from 'next/link'
 import { Upload } from 'lucide-react'
 import { selectRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
 import DataAccessError from '@/components/common/DataAccessError'
+import { overviewCompanyNames, overviewPeriodsByRuc, overviewRucs } from '@/lib/company-overview'
 
 export default async function Home({ searchParams }: { searchParams?: PeriodSearchParams }) {
   try {
@@ -19,7 +20,8 @@ export default async function Home({ searchParams }: { searchParams?: PeriodSear
 }
 
 async function renderHome(searchParams?: PeriodSearchParams) {
-  const rucs = await getAvailableRucs()
+  const companies = await getCompaniesOverview()
+  const rucs = overviewRucs(companies)
 
   if (rucs.length === 0) {
     return (
@@ -43,12 +45,8 @@ async function renderHome(searchParams?: PeriodSearchParams) {
     )
   }
 
-  const periodsByRuc = await getAllPeriods(rucs)
-  const companyNames: Record<string, string> = {}
-  for (const ruc of rucs) {
-    const cfg = await getCompanyConfig(ruc)
-    companyNames[ruc] = cfg?.razonSocial ?? ruc
-  }
+  const periodsByRuc = overviewPeriodsByRuc(companies)
+  const companyNames = overviewCompanyNames(companies)
 
   const { selectedRuc: defaultRuc, selectedPeriods: defaultPeriods } = selectRucAndPeriods({
     rucs,
@@ -56,25 +54,13 @@ async function renderHome(searchParams?: PeriodSearchParams) {
     searchParams,
   })
 
-  const initialData = defaultPeriods.length > 0
-    ? await getDashboardData(defaultRuc, defaultPeriods)
-    : null
-
-  if (defaultPeriods.length > 0 && !initialData) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-gray-50">
-        <p className="text-sm text-gray-500">Error al cargar los datos iniciales.</p>
-      </main>
-    )
-  }
-
   return (
     <Dashboard
       allRucs={rucs}
       periodsByRuc={periodsByRuc}
       initialRuc={defaultRuc}
       initialPeriods={defaultPeriods}
-      initialData={initialData}
+      initialData={null}
       companyNames={companyNames}
     />
   )

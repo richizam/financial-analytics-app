@@ -1,11 +1,12 @@
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-import { getAvailableRucs, getAllPeriods, getAnomaliesData } from '@/app/actions'
+import { getCompaniesOverview } from '@/app/actions'
 import AnomaliesView from '@/components/anomalies/AnomaliesView'
 import { selectRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
 import DataAccessError from '@/components/common/DataAccessError'
+import { overviewPeriodsByRuc, overviewRucs } from '@/lib/company-overview'
 
 export default async function AnomaliesPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
   try {
@@ -17,7 +18,8 @@ export default async function AnomaliesPage({ searchParams }: { searchParams?: P
 }
 
 async function renderAnomaliesPage(searchParams?: PeriodSearchParams) {
-  const rucs = await getAvailableRucs()
+  const companies = await getCompaniesOverview()
+  const rucs = overviewRucs(companies)
 
   if (rucs.length === 0) {
     return (
@@ -29,7 +31,7 @@ async function renderAnomaliesPage(searchParams?: PeriodSearchParams) {
     )
   }
 
-  const periodsByRuc  = await getAllPeriods(rucs)
+  const periodsByRuc = overviewPeriodsByRuc(companies)
   const { selectedRuc: defaultRuc, selectedPeriods: defaultPeriods } = selectRucAndPeriods({
     rucs,
     periodsByRuc,
@@ -37,17 +39,13 @@ async function renderAnomaliesPage(searchParams?: PeriodSearchParams) {
     defaultRuc: rucs[0],
   })
 
-  const initialData = defaultPeriods.length > 0
-    ? await getAnomaliesData(defaultRuc, defaultPeriods)
-    : null
-
   return (
     <AnomaliesView
       allRucs={rucs}
       periodsByRuc={periodsByRuc}
       initialRuc={defaultRuc}
       initialPeriods={defaultPeriods}
-      initialData={initialData}
+      initialData={null}
     />
   )
 }

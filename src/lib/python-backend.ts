@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 
 function backendBaseUrl(): string {
@@ -14,7 +15,7 @@ function backendPath(path: string): string {
   return `/api/v1${path.startsWith('/') ? path : `/${path}`}`
 }
 
-async function backendHeaders(): Promise<HeadersInit> {
+const backendHeaders = cache(async (): Promise<HeadersInit> => {
   const apiKey = process.env.BACKEND_API_KEY
   const headers: Record<string, string> = apiKey ? { 'X-Backend-Api-Key': apiKey } : {}
 
@@ -31,7 +32,7 @@ async function backendHeaders(): Promise<HeadersInit> {
   }
 
   return headers
-}
+})
 
 async function readJson<T>(response: Response, path: string): Promise<T> {
   const text = await response.text()

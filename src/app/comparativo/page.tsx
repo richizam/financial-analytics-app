@@ -1,11 +1,12 @@
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-import { getAvailableRucs, getAllPeriods, getComparativoData } from '@/app/actions'
+import { getCompaniesOverview } from '@/app/actions'
 import ComparativoView from '@/components/comparativo/ComparativoView'
 import { selectComparativoRucAndPeriods } from '@/lib/period-selection'
 import type { PeriodSearchParams } from '@/lib/period-selection'
 import DataAccessError from '@/components/common/DataAccessError'
+import { overviewPeriodsByRuc, overviewRucs } from '@/lib/company-overview'
 
 export default async function ComparativoPage({ searchParams }: { searchParams?: PeriodSearchParams }) {
   try {
@@ -17,7 +18,8 @@ export default async function ComparativoPage({ searchParams }: { searchParams?:
 }
 
 async function renderComparativoPage(searchParams?: PeriodSearchParams) {
-  const rucs = await getAvailableRucs()
+  const companies = await getCompaniesOverview()
+  const rucs = overviewRucs(companies)
 
   if (rucs.length === 0) {
     return (
@@ -29,7 +31,7 @@ async function renderComparativoPage(searchParams?: PeriodSearchParams) {
     )
   }
 
-  const periodsByRuc = await getAllPeriods(rucs)
+  const periodsByRuc = overviewPeriodsByRuc(companies)
   const {
     selectedRuc: defaultRuc,
     periodosA,
@@ -42,10 +44,6 @@ async function renderComparativoPage(searchParams?: PeriodSearchParams) {
   })
 
   // Período A = penúltimo año; Período B = último año (o mismo año si solo hay uno)
-  const initialData = periodosA.length > 0 && periodosB.length > 0
-    ? await getComparativoData(defaultRuc, periodosA, periodosB)
-    : null
-
   return (
     <ComparativoView
       allRucs={rucs}
@@ -53,7 +51,7 @@ async function renderComparativoPage(searchParams?: PeriodSearchParams) {
       initialRuc={defaultRuc}
       initialPeriodosA={periodosA}
       initialPeriodosB={periodosB}
-      initialData={initialData}
+      initialData={null}
     />
   )
 }
