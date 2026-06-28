@@ -409,7 +409,7 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
 
       {/* ── Transcript / empty state ── */}
       <ScrollArea className="min-h-0 flex-1 bg-gray-50/70">
-        <div className="flex min-h-full flex-col gap-4 px-4 py-5">
+        <div className="flex min-h-full w-full min-w-0 max-w-full flex-col gap-4 px-4 py-5">
           {!hasMessages ? (
             <div className="m-auto flex w-full max-w-xs flex-col items-center text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-600/25">
@@ -448,21 +448,21 @@ export default function GrokAssistant({ ruc, selectedPeriods, onApplyAction, onC
                 const clarificationOptions =
                   isLastMessage && awaitingClarification ? clarification?.options ?? [] : []
                 return (
-                  <div key={index} className={`flex w-full items-end gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
+                  <div key={index} className={`flex w-full min-w-0 items-end gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
                     {!isUser && (
                       <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-blue-600 shadow-sm ring-1 ring-gray-200">
                         <Bot className="h-4 w-4" />
                       </span>
                     )}
                     <div
-                      className={`flex min-w-0 flex-col gap-2 rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
+                      className={`flex min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
                         isUser
                           ? 'max-w-[82%] rounded-br-md bg-blue-600 text-white'
                           : `${hasBlocks ? 'w-full max-w-[95%]' : 'max-w-[82%]'} rounded-bl-md border border-gray-200 bg-white text-gray-800`
                       }`}
                     >
                       {isUser ? (
-                        <p className="break-words whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                        <p className="whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere]">{message.content}</p>
                       ) : (
                         <AssistantResponseRenderer text={message.content} blocks={blocks} citations={citations} />
                       )}

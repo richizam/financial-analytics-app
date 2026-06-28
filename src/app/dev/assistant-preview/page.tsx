@@ -104,6 +104,53 @@ export default function AssistantPreviewPage() {
           />
         </div>
       </Case>
+
+      <Case title="6 · Markdown table in plain text (must scroll inside, never clip)">
+        <AssistantResponseRenderer
+          text={
+            'Aquí tienes la comparación solicitada:\n\n' +
+            '| Métrica | Periodo A (Ene–Mar 2025) | Periodo B (Ene–Mar 2026) | Variación |\n' +
+            '| --- | ---: | ---: | ---: |\n' +
+            '| Ingresos | $1,234,567,890.00 | $1,456,789,012.00 | +18.0% |\n' +
+            '| Utilidad neta | $234,567.00 | $198,765.00 | -15.3% |\n' +
+            '| Margen bruto | 44.7% | 46.1% | +1.4 pp |\n\n' +
+            'En resumen, los ingresos crecieron pero la utilidad neta cayó.'
+          }
+        />
+      </Case>
+
+      <Case title="7 · Long numbers, long word and URL (must wrap, never overflow)">
+        <AssistantResponseRenderer
+          text={
+            'Referencia: https://example.supabase.co/dashboard/project/uzctpqsiwstncjdpjhkx/sql/new?query=select+everything+from+un_identificador_sin_espacios_extremadamente_largo_1234567890. ' +
+            'Total acumulado del ejercicio: 1234567890123456789.00 USD. ' +
+            'Token: supercalifragilisticoexpialidoso_pero_aun_mas_largo_sin_ningun_espacio_1234567890.'
+          }
+        />
+      </Case>
+
+      <Case title="8 · Code block (must scroll, never break layout)">
+        <AssistantResponseRenderer
+          text={
+            'Ejemplo de cálculo del margen neto:\n\n' +
+            '```\nmargen_neto = utilidad_neta / ingresos = 229025.64 / 994417.68 = 0.230307...  # una línea deliberadamente muy larga para forzar scroll horizontal dentro del bloque\n```\n\n' +
+            'Eso equivale a **23.0%**.'
+          }
+        />
+      </Case>
+
+      <Case title="9 · Narrow bubble (320px, overflow-hidden) with wide comparison + table">
+        <div className="mx-auto w-[320px] overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+          <AssistantResponseRenderer
+            text={
+              'Comparativo del trimestre:\n\n' +
+              '| Métrica | A | B |\n| --- | ---: | ---: |\n| Ingresos | $1,234,567,890 | $1,456,789,012 |\n'
+            }
+            blocks={[COMPARISON]}
+            citations={[{ source: 'comparePeriods', result_id: 'compare_def456' }]}
+          />
+        </div>
+      </Case>
     </div>
   )
 }
