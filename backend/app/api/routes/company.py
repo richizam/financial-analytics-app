@@ -12,6 +12,13 @@ from backend.app.schemas.requests import CompanyCloneRequest, CompanyConfigReque
 router = APIRouter(tags=["company"])
 
 
+@router.get("/companies/overview")
+def companies_overview(
+    service: FinancialService = Depends(get_authorized_financial_service),
+) -> list[dict[str, Any]]:
+    return service.get_companies_overview()
+
+
 @router.post("/company-config")
 def save_company_config(
     request: CompanyConfigRequest,

@@ -59,6 +59,30 @@ class FinancialService:
     def get_all_periods(self, rucs: list[str]) -> dict[str, list[str]]:
         return {ruc: self.storage.list_periods(ruc) for ruc in rucs}
 
+    def get_companies_overview(self) -> list[dict[str, Any]]:
+        getter = getattr(self.storage, "list_company_overviews", None)
+        if callable(getter):
+            return getter()
+
+        overviews: list[dict[str, Any]] = []
+        for ruc in self.get_available_rucs():
+            config = self.get_company_config(ruc) or {}
+            periods = self.storage.list_periods(ruc)
+            overviews.append(
+                {
+                    "ruc": ruc,
+                    "razonSocial": str(config.get("razonSocial") or ruc),
+                    "sector": str(config.get("sector") or ""),
+                    "niifFramework": str(config.get("niifFramework") or ""),
+                    "isDemo": bool(config.get("isDemo")),
+                    "periodCount": len(periods),
+                    "firstPeriod": periods[0] if periods else None,
+                    "lastPeriod": periods[-1] if periods else None,
+                    "periods": periods,
+                }
+            )
+        return overviews
+
     # -- data fetch helpers ------------------------------------------------
 
     def _period_contents(self, ruc: str, periodos: list[str]) -> list[dict[str, str]]:
