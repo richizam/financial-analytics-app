@@ -1,9 +1,183 @@
 from __future__ import annotations
 
+import contextvars
 import json
+import logging
 import re
-import time
+import threading
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
+
+# Process-wide shared connection pools, keyed by DSN. Every DatabaseCsvStorage
+# instance — including the per-workspace clones produced by for_workspace() —
+# shares one pool per database_url, so a connection is established once and
+# reused instead of paying ~1.7s of TCP+TLS+pooler setup on every query.
+_POOLS: dict[str, Any] = {}
+_POOLS_LOCK = threading.Lock()
+
+
+def get_pool(database_url: str):
+    """Return the shared connection pool for a DSN, creating it on first use."""
+    pool = _POOLS.get(database_url)
+    if pool is not None:
+        return pool
+    with _POOLS_LOCK:
+        pool = _POOLS.get(database_url)
+        if pool is None:
+            from psycopg_pool import ConnectionPool
+
+            pool = ConnectionPool(
+                conninfo=database_url,
+                min_size=2,
+                max_size=10,
+                kwargs={
+                    "connect_timeout": 10,
+                    # prepare_threshold=None disables server-side prepared
+                    # statements, which the PgBouncer transaction-mode pooler
+                    # (port 6543) cannot keep across the connections it multiplexes.
+                    "prepare_threshold": None,
+                    # autocommit=True: read queries (the hot path) become a single
+                    # round-trip with no trailing COMMIT (~400ms -> ~130ms). Writes
+                    # that need atomicity wrap statements in conn.transaction().
+                    "autocommit": True,
+                    # TCP keepalives so a connection the Supabase pooler drops
+                    # while idle is detected promptly rather than erroring on use.
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 3,
+                },
+                # Validate each connection before handing it out. The Supabase
+                # pooler closes idle server connections; without this the pool
+                # would return a dead one and fail the request with
+                # "SSL error: unexpected eof while reading". check transparently
+                # discards a stale connection and supplies a fresh one.
+                check=ConnectionPool.check_connection,
+                # Recycle connections proactively so they never get old/idle
+                # enough to be reaped server-side.
+                max_idle=120.0,
+                max_lifetime=1800.0,
+                # How long .connection() waits for a free/usable connection.
+                timeout=15,
+                open=False,
+            )
+            pool.open()
+            _POOLS[database_url] = pool
+    return pool
+
+
+def warmup_pool(database_url: str) -> None:
+    """Eagerly open + fill the pool so the first request doesn't pay setup cost."""
+    try:
+        get_pool(database_url).wait(timeout=20)
+    except Exception:  # pragma: no cover - lazy open on first request will retry
+        logger.warning("DB connection pool warmup failed; will open lazily", exc_info=True)
+
+
+def close_pools() -> None:
+    """Close all shared pools (called on app shutdown)."""
+    with _POOLS_LOCK:
+        for pool in _POOLS.values():
+            try:
+                pool.close()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                logger.warning("Error closing DB connection pool", exc_info=True)
+        _POOLS.clear()
+
+
+# --- Request-scoped connection reuse -----------------------------------------
+# A request typically runs several queries (workspace lookup + storage reads).
+# Borrowing — and therefore validating (check=) — a connection for each one
+# pays the ~140ms round-trip per query. Instead, a request borrows ONE validated
+# connection (the pool's check still runs on that single borrow) and reuses it
+# for every query, returning it to the pool when the request ends. The handle
+# lives in a ContextVar, so it is isolated per request/task and never shared
+# across concurrent requests. Outside a request scope (startup, background work,
+# tests) callers transparently fall back to a per-call pooled borrow.
+_request_conn: contextvars.ContextVar = contextvars.ContextVar("request_db_conn", default=None)
+
+
+class _SharedConnection:
+    """Yields the request connection without returning it to the pool on exit —
+    the request scope owns the connection's lifecycle."""
+
+    def __init__(self, conn: Any) -> None:
+        self._conn = conn
+
+    def __enter__(self):
+        return self._conn
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _RequestConnection:
+    def __init__(self, database_url: str) -> None:
+        self.database_url = database_url
+        self._cm = None
+        self._conn = None
+
+    def connection(self):
+        # Acquire on first use (and re-acquire if the held connection was closed,
+        # e.g. dropped mid-request); the pool's check validates it on borrow.
+        if self._conn is None or getattr(self._conn, "closed", False):
+            self._acquire()
+        return _SharedConnection(self._conn)
+
+    def _acquire(self) -> None:
+        self._release_current()
+        self._cm = get_pool(self.database_url).connection()
+        self._conn = self._cm.__enter__()
+
+    def discard(self) -> None:
+        """Drop a broken connection so the next use borrows a fresh, checked one."""
+        self._release_current()
+
+    def release(self) -> None:
+        self._release_current()
+
+    def _release_current(self) -> None:
+        cm = self._cm
+        self._cm = None
+        self._conn = None
+        if cm is not None:
+            try:
+                cm.__exit__(None, None, None)
+            except Exception:  # pragma: no cover - best-effort return to pool
+                logger.warning("Error returning request DB connection to the pool", exc_info=True)
+
+
+def request_connection(database_url: str):
+    """Connection context manager for a query: the request-scoped connection when
+    a scope is active, otherwise a fresh per-call pooled borrow."""
+    holder = _request_conn.get()
+    if holder is not None and holder.database_url == database_url:
+        return holder.connection()
+    return get_pool(database_url).connection()
+
+
+def discard_request_connection(database_url: str) -> None:
+    """Discard the request-scoped connection (used by retry after a dropped one)."""
+    holder = _request_conn.get()
+    if holder is not None and holder.database_url == database_url:
+        holder.discard()
+
+
+def open_request_connection(database_url: str):
+    """Open a request scope. Returns (holder, token); pass both to close_request_connection."""
+    holder = _RequestConnection(database_url)
+    token = _request_conn.set(holder)
+    return holder, token
+
+
+def close_request_connection(holder: _RequestConnection, token) -> None:
+    """Return the request connection to the pool and clear the scope."""
+    try:
+        holder.release()
+    finally:
+        _request_conn.reset(token)
 
 
 class DatabaseCsvStorage:
@@ -23,18 +197,12 @@ class DatabaseCsvStorage:
         return DatabaseCsvStorage(self.database_url, workspace_id)
 
     def _connect(self):
-        last_exc: Exception | None = None
-        for attempt in range(3):
-            try:
-                return self._psycopg.connect(self.database_url, connect_timeout=10)
-            except self._psycopg.OperationalError as exc:
-                last_exc = exc
-                if attempt == 2:
-                    break
-                time.sleep(0.5 * (attempt + 1))
-        if last_exc:
-            raise last_exc
-        raise RuntimeError("Could not connect to database")
+        # Reuse the request-scoped connection when a request scope is active
+        # (one validated borrow per request, reused by every query); otherwise
+        # borrow per call from the shared pool. Either way the returned context
+        # manager yields a connection, so the existing `with self._connect() as
+        # conn:` call sites are unchanged.
+        return request_connection(self.database_url)
 
     def _workspace_id(self) -> str:
         if not self.workspace_id:
@@ -83,6 +251,74 @@ class DatabaseCsvStorage:
                 )
                 return [row[0] for row in cur.fetchall()]
 
+    def list_company_overviews(self) -> list[dict[str, Any]]:
+        workspace_id = self._workspace_id()
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    WITH company_periods AS (
+                      SELECT workspace_id, ruc, substring(filename from 1 for 6) AS period
+                      FROM public.csv_files
+                      WHERE workspace_id = %s AND filename ~* '^[0-9]{6}[.]csv$'
+                      UNION
+                      SELECT workspace_id, ruc, period
+                      FROM public.csv_imports
+                      WHERE workspace_id = %s
+                        AND import_type = 'journal'
+                        AND status = 'succeeded'
+                        AND period IS NOT NULL
+                      UNION
+                      SELECT workspace_id, ruc, period
+                      FROM public.account_period_balances
+                      WHERE workspace_id = %s
+                    ),
+                    distinct_periods AS (
+                      SELECT DISTINCT workspace_id, ruc, period
+                      FROM company_periods
+                      WHERE period ~ '^[0-9]{6}$'
+                    ),
+                    periods AS (
+                      SELECT
+                        workspace_id,
+                        ruc,
+                        array_agg(period ORDER BY period) AS periods
+                      FROM distinct_periods
+                      GROUP BY workspace_id, ruc
+                    )
+                    SELECT
+                      c.ruc,
+                      COALESCE(NULLIF(c.config->>'razonSocial', ''), NULLIF(c.razon_social, ''), c.ruc) AS razon_social,
+                      COALESCE(NULLIF(c.config->>'sector', ''), c.sector, '') AS sector,
+                      COALESCE(NULLIF(c.config->>'niifFramework', ''), '') AS niif_framework,
+                      lower(COALESCE(c.config->>'isDemo', 'false')) IN ('true', '1', 'yes', 'on') AS is_demo,
+                      COALESCE(p.periods, ARRAY[]::text[]) AS periods
+                    FROM public.companies c
+                    LEFT JOIN periods p
+                      ON p.workspace_id = c.workspace_id AND p.ruc = c.ruc
+                    WHERE c.workspace_id = %s
+                    ORDER BY c.ruc ASC
+                    """,
+                    (workspace_id, workspace_id, workspace_id, workspace_id),
+                )
+                overviews: list[dict[str, Any]] = []
+                for row in cur.fetchall():
+                    periods = list(row[5] or [])
+                    overviews.append(
+                        {
+                            "ruc": row[0],
+                            "razonSocial": row[1],
+                            "sector": row[2],
+                            "niifFramework": row[3],
+                            "isDemo": bool(row[4]),
+                            "periodCount": len(periods),
+                            "firstPeriod": periods[0] if periods else None,
+                            "lastPeriod": periods[-1] if periods else None,
+                            "periods": periods,
+                        }
+                    )
+                return overviews
+
     def list_periods(self, ruc: str) -> list[str]:
         with self._connect() as conn:
             with conn.cursor() as cur:
@@ -95,13 +331,28 @@ class DatabaseCsvStorage:
                       WHERE workspace_id = %s AND ruc = %s AND filename ~* '^[0-9]{6}[.]csv$'
                       UNION
                       SELECT period
-                      FROM public.journal_entries
+                      FROM public.csv_imports
+                      WHERE workspace_id = %s
+                        AND ruc = %s
+                        AND import_type = 'journal'
+                        AND status = 'succeeded'
+                        AND period IS NOT NULL
+                      UNION
+                      SELECT period
+                      FROM public.account_period_balances
                       WHERE workspace_id = %s AND ruc = %s
                     ) periods
                     WHERE period ~ '^[0-9]{6}$'
                     ORDER BY period ASC
                     """,
-                    (self._workspace_id(), ruc, self._workspace_id(), ruc),
+                    (
+                        self._workspace_id(),
+                        ruc,
+                        self._workspace_id(),
+                        ruc,
+                        self._workspace_id(),
+                        ruc,
+                    ),
                 )
                 return [row[0] for row in cur.fetchall()]
 
@@ -173,7 +424,7 @@ class DatabaseCsvStorage:
 
         workspace_id = self._workspace_id()
         with self._connect() as conn:
-            with conn.cursor() as cur:
+            with conn.transaction(), conn.cursor() as cur:
                 self._upsert_raw_file(cur, workspace_id, ruc, filename, content)
 
     def upsert_journal_import(
@@ -188,7 +439,7 @@ class DatabaseCsvStorage:
         period = filename[:6]
         workspace_id = self._workspace_id()
         with self._connect() as conn:
-            with conn.cursor() as cur:
+            with conn.transaction(), conn.cursor() as cur:
                 company_id, file_id = self._upsert_raw_file(cur, workspace_id, ruc, filename, content)
                 import_id = self._upsert_import(
                     cur,
@@ -277,7 +528,7 @@ class DatabaseCsvStorage:
         year = int(match.group(1))
         workspace_id = self._workspace_id()
         with self._connect() as conn:
-            with conn.cursor() as cur:
+            with conn.transaction(), conn.cursor() as cur:
                 company_id, file_id = self._upsert_raw_file(cur, workspace_id, ruc, filename, content)
                 import_id = self._upsert_import(
                     cur,
@@ -415,7 +666,7 @@ class DatabaseCsvStorage:
     def set_analysis_cache(self, ruc: str, analysis_type: str, period_key: str, payload: dict[str, Any]) -> None:
         workspace_id = self._workspace_id()
         with self._connect() as conn:
-            with conn.cursor() as cur:
+            with conn.transaction(), conn.cursor() as cur:
                 company_id = self._ensure_company(cur, workspace_id, ruc)
                 cur.execute(
                     """
@@ -435,7 +686,7 @@ class DatabaseCsvStorage:
     def invalidate_analysis_cache(self, ruc: str) -> None:
         workspace_id = self._workspace_id()
         with self._connect() as conn:
-            with conn.cursor() as cur:
+            with conn.transaction(), conn.cursor() as cur:
                 self._invalidate_analysis_cache_cur(cur, workspace_id, ruc)
 
     def _upsert_config(self, ruc: str, content: str) -> None:
@@ -450,7 +701,7 @@ class DatabaseCsvStorage:
         sector = parsed.get("sector")
         workspace_id = self._workspace_id()
         with self._connect() as conn:
-            with conn.cursor() as cur:
+            with conn.transaction(), conn.cursor() as cur:
                 cur.execute(
                     """
                     INSERT INTO public.companies (workspace_id, ruc, razon_social, sector, config)

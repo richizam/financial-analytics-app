@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import jwt
+import psycopg
 from fastapi import Header, HTTPException, status
 from jwt import InvalidTokenError, PyJWKClient
 from jwt.exceptions import PyJWKClientError
@@ -24,6 +25,16 @@ class AuthenticatedUser:
     email: str | None
     workspace_id: str
     workspace_role: str
+
+
+@dataclass(frozen=True)
+class _WorkspaceCacheEntry:
+    workspace_id: str
+    workspace_role: str
+    expires_at: float
+
+
+_workspace_auth_cache: dict[str, _WorkspaceCacheEntry] = {}
 
 
 def require_backend_api_key(x_backend_api_key: str | None = Header(default=None)) -> None:
@@ -128,7 +139,72 @@ def _verified_claims(token: str) -> dict[str, Any]:
         return _verify_with_auth_server(token)
 
 
-def _active_workspace_for_user(user_id: str) -> tuple[str, str]:
+_ACTIVE_WORKSPACE_QUERY = """
+    select wm.workspace_id::text, wm.role
+    from public.workspace_members wm
+    join public.workspaces w on w.id = wm.workspace_id
+    where wm.user_id = %s
+      and w.status in ('trialing', 'active')
+    order by
+      case wm.role
+        when 'owner' then 1
+        when 'admin' then 2
+        when 'member' then 3
+        else 4
+      end,
+      wm.created_at asc
+    limit 1
+"""
+
+# Error text that marks a pooled connection the Supabase pooler dropped while
+# idle (vs. a genuine error like a bad password). On these we retry with a fresh
+# pooled connection instead of failing the request with a 503.
+_DROPPED_CONNECTION_MARKERS = (
+    "ssl error",
+    "unexpected eof",
+    "server closed",
+    "connection is closed",
+    "consuming input failed",
+    "bad connection",
+    "terminating connection",
+    "eof detected",
+)
+
+
+def _is_dropped_connection(exc: Exception) -> bool:
+    if not isinstance(exc, psycopg.OperationalError):
+        return False
+    text = str(exc).lower()
+    return any(marker in text for marker in _DROPPED_CONNECTION_MARKERS)
+
+
+def _fetch_active_workspace_row(database_url: str, user_id: str) -> tuple[str, str] | None:
+    from backend.app.storage.postgres import discard_request_connection, request_connection
+
+    last_exc: psycopg.OperationalError | None = None
+    # The pool validates a connection before lending it (check=), but a
+    # connection can still be dropped between validation and use; retry so a
+    # stale connection becomes a transparent recovery instead of a 503. Uses the
+    # request-scoped connection when one is active, so this single validated
+    # borrow is then reused by the rest of the request's queries.
+    for _ in range(3):
+        try:
+            with request_connection(database_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_ACTIVE_WORKSPACE_QUERY, (user_id,))
+                    return cur.fetchone()
+        except psycopg.OperationalError as exc:
+            if not _is_dropped_connection(exc):
+                raise
+            last_exc = exc
+            # Drop the broken request connection so the retry borrows a fresh,
+            # validated one (and the rest of the request reuses that).
+            discard_request_connection(database_url)
+            logger.warning("Workspace lookup hit a dropped DB connection; retrying")
+    raise last_exc if last_exc is not None else RuntimeError("Workspace lookup failed")
+
+
+def _resolve_active_workspace_for_user(user_id: str) -> tuple[str, str]:
     settings = get_settings()
     if not settings.database_url:
         raise HTTPException(
@@ -137,43 +213,7 @@ def _active_workspace_for_user(user_id: str) -> tuple[str, str]:
         )
 
     try:
-        import psycopg
-
-        last_exc: Exception | None = None
-        for attempt in range(3):
-            try:
-                conn = psycopg.connect(settings.database_url, connect_timeout=10)
-                break
-            except psycopg.OperationalError as exc:
-                last_exc = exc
-                if attempt == 2:
-                    raise
-                time.sleep(0.5 * (attempt + 1))
-        else:
-            raise last_exc or RuntimeError("Could not connect to database")
-
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    select wm.workspace_id::text, wm.role
-                    from public.workspace_members wm
-                    join public.workspaces w on w.id = wm.workspace_id
-                    where wm.user_id = %s
-                      and w.status in ('trialing', 'active')
-                    order by
-                      case wm.role
-                        when 'owner' then 1
-                        when 'admin' then 2
-                        when 'member' then 3
-                        else 4
-                      end,
-                      wm.created_at asc
-                    limit 1
-                    """,
-                    (user_id,),
-                )
-                row = cur.fetchone()
+        row = _fetch_active_workspace_row(settings.database_url, user_id)
     except Exception as exc:
         logger.exception("Could not resolve workspace access for Supabase user %s", user_id)
         raise HTTPException(
@@ -187,6 +227,35 @@ def _active_workspace_for_user(user_id: str) -> tuple[str, str]:
             detail="No active workspace for this user",
         )
     return str(row[0]), str(row[1])
+
+
+def _prune_workspace_cache(now: float) -> None:
+    expired = [user_id for user_id, entry in _workspace_auth_cache.items() if entry.expires_at <= now]
+    for user_id in expired:
+        _workspace_auth_cache.pop(user_id, None)
+    if len(_workspace_auth_cache) > 2048:
+        _workspace_auth_cache.clear()
+
+
+def _active_workspace_for_user(user_id: str) -> tuple[str, str]:
+    settings = get_settings()
+    ttl = settings.workspace_auth_cache_ttl_seconds
+    if ttl <= 0:
+        return _resolve_active_workspace_for_user(user_id)
+
+    now = time.monotonic()
+    entry = _workspace_auth_cache.get(user_id)
+    if entry and entry.expires_at > now:
+        return entry.workspace_id, entry.workspace_role
+
+    workspace_id, workspace_role = _resolve_active_workspace_for_user(user_id)
+    _prune_workspace_cache(now)
+    _workspace_auth_cache[user_id] = _WorkspaceCacheEntry(
+        workspace_id=workspace_id,
+        workspace_role=workspace_role,
+        expires_at=now + ttl,
+    )
+    return workspace_id, workspace_role
 
 
 def require_supabase_user(authorization: str | None = Header(default=None)) -> AuthenticatedUser:

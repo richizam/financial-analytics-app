@@ -62,6 +62,7 @@ class Settings:
         "SUPABASE_AUTH_REQUIRED",
         os.getenv("APP_ENV", os.getenv("NODE_ENV", "local")).lower() in {"prod", "production"},
     )
+    workspace_auth_cache_ttl_seconds: float = float(os.getenv("WORKSPACE_AUTH_CACHE_TTL_SECONDS", "15"))
 
     xai_api_key: str | None = os.getenv("XAI_API_KEY")
     xai_base_url: str = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1").strip()
@@ -109,6 +110,8 @@ class Settings:
             raise RuntimeError("BACKEND_API_KEY is required when backend API key protection is enabled")
         if self.supabase_auth_required and not self.supabase_configured:
             raise RuntimeError("Supabase auth requires SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY")
+        if self.workspace_auth_cache_ttl_seconds < 0:
+            raise RuntimeError("WORKSPACE_AUTH_CACHE_TTL_SECONDS must be >= 0")
         if not self.xai_base_url:
             raise RuntimeError("XAI_BASE_URL cannot be empty")
         if not self.xai_model:
