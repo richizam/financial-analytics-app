@@ -22,6 +22,7 @@ from backend.app.storage import VALID_RUC
 MappingProvider = Callable[[str, str], dict[str, Any]]
 
 _FILENAME_RE = re.compile(r"^(\d{6}|saldos_iniciales_\d{4})\.csv$", re.IGNORECASE)
+MAX_CSV_UPLOAD_BYTES = 2_000_000
 
 
 class CsvImporter:
@@ -47,6 +48,8 @@ class CsvImporter:
             return {"ok": False, "error": "RUC invalido (debe tener 13 digitos)"}
         if not _FILENAME_RE.fullmatch(filename):
             return {"ok": False, "error": "Nombre invalido. Usa YYYYMM.csv o saldos_iniciales_YYYY.csv"}
+        if len((content or "").encode("utf-8")) > MAX_CSV_UPLOAD_BYTES:
+            return {"ok": False, "error": "CSV demasiado grande. El limite es 2 MB por archivo."}
 
         if period_from_filename(filename):
             return self._upload_journal_csv(ruc, filename, content, mapping, mapping_provider)

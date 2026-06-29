@@ -219,7 +219,10 @@ def normalize_journal_csv(
             errors.append({"row": index, "field": "description", "message": "La descripcion es obligatoria."})
             continue
 
-        debe, haber = _entry_amounts(row, source_mapping)
+        debe, haber, amount_errors = _entry_amounts(row, source_mapping, index)
+        if amount_errors:
+            errors.extend(amount_errors)
+            continue
         entries.append(
             {
                 "fecha": fecha.isoformat(),
@@ -271,7 +274,14 @@ def normalize_opening_balances_csv(
         if not cod_cuenta:
             errors.append({"row": index, "field": "account_code", "message": "La cuenta contable es obligatoria."})
             continue
-        saldo = parse_money_to_cents(_row_value(row, source_mapping, "opening_balance"))
+        saldo, amount_error = _parse_money_cell(
+            _row_value(row, source_mapping, "opening_balance"),
+            "opening_balance",
+            index,
+        )
+        if amount_error:
+            errors.append(amount_error)
+            continue
         tipo = _row_value(row, source_mapping, "balance_type").upper()
         if tipo.startswith("A") or tipo.startswith("C"):
             saldo = -abs(saldo)
@@ -304,6 +314,11 @@ def normalize_opening_balances_csv(
 
 
 def parse_money_to_cents(value: str) -> int:
+    parsed = _parse_money_to_cents(value)
+    return parsed if parsed is not None else 0
+
+
+def _parse_money_to_cents(value: str) -> int | None:
     raw = str(value or "").strip()
     if not raw:
         return 0
@@ -331,10 +346,12 @@ def parse_money_to_cents(value: str) -> int:
     elif re.search(r"\.\d{3}$", clean):
         clean = clean.replace(".", "")
 
+    if not clean:
+        return None
     try:
         amount = Decimal(clean)
     except InvalidOperation:
-        return 0
+        return None
     cents = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     return -cents if negative else cents
 
@@ -354,14 +371,37 @@ def parse_date(value: str) -> date | None:
     return None
 
 
-def _entry_amounts(row: dict[str, str], mapping: dict[str, str | None]) -> tuple[int, int]:
+def _entry_amounts(
+    row: dict[str, str],
+    mapping: dict[str, str | None],
+    row_number: int,
+) -> tuple[int, int, list[dict[str, Any]]]:
     if mapping.get("amount") and not (mapping.get("debit") and mapping.get("credit")):
-        amount = parse_money_to_cents(_row_value(row, mapping, "amount"))
-        return (amount, 0) if amount >= 0 else (0, abs(amount))
+        amount, error = _parse_money_cell(_row_value(row, mapping, "amount"), "amount", row_number)
+        if error:
+            return 0, 0, [error]
+        if amount >= 0:
+            return amount, 0, []
+        return 0, abs(amount), []
 
-    debit = parse_money_to_cents(_row_value(row, mapping, "debit"))
-    credit = parse_money_to_cents(_row_value(row, mapping, "credit"))
-    return abs(debit), abs(credit)
+    debit, debit_error = _parse_money_cell(_row_value(row, mapping, "debit"), "debit", row_number)
+    credit, credit_error = _parse_money_cell(_row_value(row, mapping, "credit"), "credit", row_number)
+    errors = [error for error in (debit_error, credit_error) if error]
+    return abs(debit), abs(credit), errors
+
+
+def _parse_money_cell(value: str, field: str, row_number: int) -> tuple[int, dict[str, Any] | None]:
+    raw = str(value or "").strip()
+    if not raw:
+        return 0, None
+    parsed = _parse_money_to_cents(raw)
+    if parsed is None:
+        return 0, {
+            "row": row_number,
+            "field": field,
+            "message": f"Monto invalido: {raw}",
+        }
+    return parsed, None
 
 
 def _opening_balance_mapping(profile: dict[str, Any], mapping: dict[str, Any] | None) -> dict[str, str | None]:

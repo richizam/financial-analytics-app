@@ -10,6 +10,7 @@ from backend.app.core.security import AuthenticatedUser, require_supabase_user
 from backend.app.domain.ai import AiAssistantService
 from backend.app.domain.ai.tools import AiToolValidationError
 from backend.app.domain.ai.xai_client import XaiClientError, XaiConfigurationError
+from backend.app.domain.financial.imports import MAX_CSV_UPLOAD_BYTES
 from backend.app.schemas.requests import AiChatRequest
 
 
@@ -57,7 +58,7 @@ async def csv_mapping(
     ai_service: AiAssistantService = Depends(get_ai_service),
 ) -> dict[str, Any]:
     raw = await file.read()
-    if len(raw) > 2_000_000:
+    if len(raw) > MAX_CSV_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="CSV is too large for AI profiling")
     content = raw.decode("utf-8-sig", errors="replace")
     return ai_service.suggest_csv_mapping(file.filename or "upload.csv", content)

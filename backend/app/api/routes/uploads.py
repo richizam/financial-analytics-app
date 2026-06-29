@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from backend.app.api.dependencies import get_ai_service
 from backend.app.domain.ai import AiAssistantService
+from backend.app.domain.financial.imports import MAX_CSV_UPLOAD_BYTES
 
 
 router = APIRouter(tags=["uploads"])
@@ -20,6 +21,8 @@ async def upload_csv(
     ai_service: AiAssistantService = Depends(get_ai_service),
 ) -> dict[str, Any]:
     raw = await file.read()
+    if len(raw) > MAX_CSV_UPLOAD_BYTES:
+        return {"ok": False, "error": "CSV demasiado grande. El limite es 2 MB por archivo."}
     content = raw.decode("utf-8-sig", errors="replace")
     parsed_mapping: dict[str, Any] | None = None
     if mapping:
