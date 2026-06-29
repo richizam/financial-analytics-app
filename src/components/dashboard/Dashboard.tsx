@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition, useEffect, useRef } from 'react'
+import { useState, useTransition, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { TrendingUp, DollarSign, Percent, Activity, ArrowLeft, FolderOpen } from 'lucide-react'
 import { getDashboardData } from '@/app/actions'
@@ -126,26 +127,11 @@ export default function Dashboard({
   const [isLoading, setIsLoading]           = useState(false)
   const requestIdRef                        = useRef(0)
   const setupAppliedRef                     = useRef(false)
+  const searchParams                        = useSearchParams()
 
-  // After /setup, select the newly created company
-  useEffect(() => {
-    const pendingRuc = sessionStorage.getItem('setup_ruc')
-    if (pendingRuc && allRucs.includes(pendingRuc)) {
-      sessionStorage.removeItem('setup_ruc')
-      setupAppliedRef.current = true
-      handleRucChange(pendingRuc)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (!setupAppliedRef.current && !initialData && initialPeriods.length > 0) {
-      reload(initialRuc, initialPeriods)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  function reload(ruc: string, periods: string[]) {
+  // Defined before the effects below (and stabilised with useCallback) so they
+  // can appear honestly in dependency arrays without stale-closure risk.
+  const reload = useCallback((ruc: string, periods: string[]) => {
     const requestId = ++requestIdRef.current
     if (periods.length === 0) {
       setData(null)
@@ -166,9 +152,9 @@ export default function Dashboard({
       .finally(() => {
         if (requestId === requestIdRef.current) setIsLoading(false)
       })
-  }
+  }, [])
 
-  function handleRucChange(ruc: string) {
+  const handleRucChange = useCallback((ruc: string) => {
     const defaultPeriods = periodsByRuc[ruc] ?? []
     const years = [...new Set(defaultPeriods.map(p => p.substring(0, 4)))].sort()
     const lastYear = years[years.length - 1] ?? ''
@@ -176,7 +162,43 @@ export default function Dashboard({
     setSelectedRuc(ruc)
     setSelectedPeriods(periods)
     reload(ruc, periods)
-  }
+  }, [periodsByRuc, reload])
+
+  // After /setup, select the newly created company (mount-only: reads a
+  // one-shot sessionStorage flag).
+  useEffect(() => {
+    const pendingRuc = sessionStorage.getItem('setup_ruc')
+    if (pendingRuc && allRucs.includes(pendingRuc)) {
+      sessionStorage.removeItem('setup_ruc')
+      setupAppliedRef.current = true
+      handleRucChange(pendingRuc)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Initial data load (mount-only: hydrates the dashboard when the server
+  // passed initialData={null}).
+  useEffect(() => {
+    if (!setupAppliedRef.current && !initialData && initialPeriods.length > 0) {
+      reload(initialRuc, initialPeriods)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // The sidebar switches companies by pushing a new URL (e.g. /?ruc=…). A
+  // searchParams-only navigation doesn't reliably re-render this dynamic page
+  // server-side (the client Router Cache can short-circuit it), so we react to
+  // the URL param directly — useSearchParams() updates synchronously on client
+  // navigation. We compare against the last ruc this effect applied (a ref),
+  // not selectedRuc: the header PeriodSelector also mutates selectedRuc, and
+  // reacting to that would revert an internal switch back to the URL value.
+  const urlRuc = searchParams.get('ruc')
+  const appliedUrlRucRef = useRef(initialRuc)
+  useEffect(() => {
+    if (!urlRuc || urlRuc === appliedUrlRucRef.current || !allRucs.includes(urlRuc)) return
+    appliedUrlRucRef.current = urlRuc
+    handleRucChange(urlRuc)
+  }, [urlRuc, allRucs, handleRucChange])
 
   function handlePeriodsChange(periods: string[]) {
     setSelectedPeriods(periods)

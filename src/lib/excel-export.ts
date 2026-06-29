@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import type { ESF, ERI, StatementSection } from './statements'
 import type { MetricsResult, Ratio, SemaferoEstado } from './metrics'
 import type { MayorData, DashboardData } from '@/app/actions'
@@ -7,8 +6,97 @@ import type { MayorData, DashboardData } from '@/app/actions'
 
 type Row = (string | number | null)[]
 
+type Worksheet = {
+  rows: Row[]
+  widths?: number[]
+  autofilter?: { rows: number; columns: number }
+}
+
+type Workbook = {
+  sheets: { name: string; worksheet: Worksheet }[]
+}
+
 function c(cents: number): number {
   return Math.round(cents) / 100
+}
+
+function makeSheet(rows: Row[], widths?: number[], autofilter?: Worksheet['autofilter']): Worksheet {
+  return { rows, widths, autofilter }
+}
+
+function makeWorkbook(): Workbook {
+  return { sheets: [] }
+}
+
+function appendSheet(workbook: Workbook, worksheet: Worksheet, name: string): void {
+  workbook.sheets.push({ name: sanitizeSheetName(name), worksheet })
+}
+
+function sanitizeSheetName(name: string): string {
+  const cleaned = name.replace(/[\\/?*[\]:]/g, '-').trim()
+  return (cleaned || 'Hoja').slice(0, 31)
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function cellXml(value: string | number | null): string {
+  if (value === null || value === '') return '<Cell/>'
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `<Cell><Data ss:Type="Number">${value}</Data></Cell>`
+  }
+  return `<Cell><Data ss:Type="String">${xmlEscape(String(value))}</Data></Cell>`
+}
+
+function worksheetXml({ rows, widths, autofilter }: Worksheet): string {
+  const columns = (widths ?? []).map(width => `<Column ss:Width="${Math.max(8, width) * 7}"/>`).join('')
+  const rowXml = rows.map(row => `<Row>${row.map(cellXml).join('')}</Row>`).join('')
+  const table = `<Table>${columns}${rowXml}</Table>`
+  const filter =
+    autofilter && autofilter.rows > 1 && autofilter.columns > 0
+      ? `<AutoFilter x:Range="R1C1:R${autofilter.rows}C${autofilter.columns}"/>`
+      : ''
+  return `${table}${filter}`
+}
+
+function workbookXml(workbook: Workbook): string {
+  const worksheets = workbook.sheets
+    .map(({ name, worksheet }) => (
+      `<Worksheet ss:Name="${xmlEscape(name)}">${worksheetXml(worksheet)}</Worksheet>`
+    ))
+    .join('')
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+${worksheets}
+</Workbook>`
+}
+
+function xlsFilename(filename: string): string {
+  return filename.replace(/\.xlsx$/i, '.xls')
+}
+
+function triggerDownload(workbook: Workbook, filename: string): void {
+  const blob = new Blob([workbookXml(workbook)], {
+    type: 'application/vnd.ms-excel;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = xlsFilename(filename)
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 function estadoTexto(estado: SemaferoEstado): string {
@@ -35,7 +123,7 @@ function unidadRatio(r: Ratio): string {
 
 // ─── ERI ──────────────────────────────────────────────────────────────────────
 
-function buildERISheet(eri: ERI): XLSX.WorkSheet {
+function buildERISheet(eri: ERI): Worksheet {
   const rows: Row[] = []
 
   rows.push(['Concepto', 'USD', 'Margen'])
@@ -84,9 +172,7 @@ function buildERISheet(eri: ERI): XLSX.WorkSheet {
   rows.push([])
   rows.push(['UTILIDAD NETA', c(eri.utilidadNeta), eri.margenNeto])
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 52 }, { wch: 16 }, { wch: 12 }]
-  return ws
+  return makeSheet(rows, [52, 16, 12])
 }
 
 // ─── ESF ──────────────────────────────────────────────────────────────────────
@@ -107,7 +193,7 @@ function buildESFSheet(
   irEnAsientos: boolean,
   pt: number,
   ir: number,
-): XLSX.WorkSheet {
+): Worksheet {
   const rows: Row[] = []
 
   rows.push(['Concepto', 'Código', 'USD'])
@@ -143,14 +229,12 @@ function buildESFSheet(
   rows.push([])
   rows.push(['TOTAL PASIVOS + PATRIMONIO', null, c(esf.totalActivos)])
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 46 }, { wch: 14 }, { wch: 16 }]
-  return ws
+  return makeSheet(rows, [46, 14, 16])
 }
 
 // ─── Ratios ───────────────────────────────────────────────────────────────────
 
-function buildRatiosSheet(metricas: MetricsResult): XLSX.WorkSheet {
+function buildRatiosSheet(metricas: MetricsResult): Worksheet {
   const rows: Row[] = []
 
   rows.push(['Categoría', 'Ratio', 'Valor', 'Unidad', 'Estado'])
@@ -170,9 +254,7 @@ function buildRatiosSheet(metricas: MetricsResult): XLSX.WorkSheet {
     rows.push([])
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 15 }, { wch: 42 }, { wch: 12 }, { wch: 10 }, { wch: 12 }]
-  return ws
+  return makeSheet(rows, [15, 42, 12, 10, 12])
 }
 
 // ─── Mayor Completo (todas las cuentas, una sola hoja) ───────────────────────
@@ -209,42 +291,25 @@ export function exportarMayorCompleto(ruc: string, periods: string[], majors: Ma
     }
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
+  const ws = makeSheet(rows, [14, 36, 12, 20, 50, 14, 14, 16], {
+    rows: rows.length,
+    columns: 8,
+  })
 
-  // Autofilter sobre todas las columnas y todas las filas de datos
-  ws['!autofilter'] = { ref: `A1:H${rows.length}` }
-
-  ws['!cols'] = [
-    { wch: 14 }, { wch: 36 }, { wch: 12 }, { wch: 20 },
-    { wch: 50 }, { wch: 14 }, { wch: 14 }, { wch: 16 },
-  ]
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Mayor Completo')
+  const wb = makeWorkbook()
+  appendSheet(wb, ws, 'Mayor Completo')
 
   const sorted = [...periods].sort()
   const year  = sorted[0]?.substring(0, 4) ?? ''
   const range = sorted.length === 1 ? sorted[0] : `${sorted[0]}-${sorted[sorted.length - 1]}`
-  const filename = `${ruc}_Mayor_Completo_${year}_${range}.xlsx`
-
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  const filename = `${ruc}_Mayor_Completo_${year}_${range}.xls`
+  triggerDownload(wb, filename)
 }
 
 // ─── API pública ──────────────────────────────────────────────────────────────
 
 export function buildFilename(ruc: string, periods: string[]): string {
-  if (periods.length === 0) return `${ruc}.xlsx`
+  if (periods.length === 0) return `${ruc}.xls`
   const sorted = [...periods].sort()
   const year = sorted[0].substring(0, 4)
   const isFullYear =
@@ -259,12 +324,12 @@ export function buildFilename(ruc: string, periods: string[]): string {
     ? sorted[0]
     : `${sorted[0]}-${sorted[sorted.length - 1]}`
 
-  return `${ruc}_${year}_${periodo}.xlsx`
+  return `${ruc}_${year}_${periodo}.xls`
 }
 
 // ─── Libro Mayor ──────────────────────────────────────────────────────────────
 
-function buildMayorSheet(mayor: MayorData): XLSX.WorkSheet {
+function buildMayorSheet(mayor: MayorData): Worksheet {
   const rows: Row[] = []
 
   rows.push([`${mayor.codCuenta} — ${mayor.nombreCuenta}`])
@@ -289,41 +354,24 @@ function buildMayorSheet(mayor: MayorData): XLSX.WorkSheet {
   rows.push([])
   rows.push(['Totales del período', null, null, null, c(mayor.totalDebe), c(mayor.totalHaber), c(mayor.saldoFinal)])
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [
-    { wch: 12 }, { wch: 18 }, { wch: 6 }, { wch: 48 },
-    { wch: 14 }, { wch: 14 }, { wch: 16 },
-  ]
-  return ws
+  return makeSheet(rows, [12, 18, 6, 48, 14, 14, 16])
 }
 
 export function exportarMayor(ruc: string, periods: string[], mayor: MayorData): void {
-  const wb = XLSX.utils.book_new()
+  const wb = makeWorkbook()
   const sheetName = mayor.codCuenta.replace(/\./g, '-')  // evitar puntos en nombre de hoja
-  XLSX.utils.book_append_sheet(wb, buildMayorSheet(mayor), sheetName)
+  appendSheet(wb, buildMayorSheet(mayor), sheetName)
 
   const sorted = [...periods].sort()
   const year = sorted[0]?.substring(0, 4) ?? ''
   const range = sorted.length === 1 ? sorted[0] : `${sorted[0]}-${sorted[sorted.length - 1]}`
-  const filename = `${ruc}_Mayor_${mayor.codCuenta}_${year}_${range}.xlsx`
-
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  const filename = `${ruc}_Mayor_${mayor.codCuenta}_${year}_${range}.xls`
+  triggerDownload(wb, filename)
 }
 
 // ─── Comparativo ──────────────────────────────────────────────────────────────
 
-function buildComparativoERISheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): XLSX.WorkSheet {
+function buildComparativoERISheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): Worksheet {
   const ea = a.eri
   const eb = b.eri
   const rows: Row[] = []
@@ -356,12 +404,10 @@ function buildComparativoERISheet(labelA: string, labelB: string, a: DashboardDa
   addRow('UTILIDAD NETA', ea.utilidadNeta, eb.utilidadNeta)
   addRow('  Margen neto', ea.margenNeto, eb.margenNeto, true)
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 38 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 12 }]
-  return ws
+  return makeSheet(rows, [38, 16, 16, 14, 12])
 }
 
-function buildComparativoRatiosSheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): XLSX.WorkSheet {
+function buildComparativoRatiosSheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): Worksheet {
   const rows: Row[] = []
   rows.push(['Categoría', 'Ratio', labelA, labelB, 'Var %'])
   rows.push([])
@@ -385,12 +431,10 @@ function buildComparativoRatiosSheet(labelA: string, labelB: string, a: Dashboar
     rows.push([])
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 15 }, { wch: 42 }, { wch: 14 }, { wch: 14 }, { wch: 12 }]
-  return ws
+  return makeSheet(rows, [15, 42, 14, 14, 12])
 }
 
-function buildComparativoKPISheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): XLSX.WorkSheet {
+function buildComparativoKPISheet(labelA: string, labelB: string, a: DashboardData, b: DashboardData): Worksheet {
   const ea = a.eri
   const eb = b.eri
   const rows: Row[] = []
@@ -411,24 +455,7 @@ function buildComparativoKPISheet(labelA: string, labelB: string, a: DashboardDa
   addKPI('Margen bruto', ea.margenBruto, eb.margenBruto, false)
   addKPI('Margen neto', ea.margenNeto, eb.margenNeto, false)
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 12 }]
-  return ws
-}
-
-function triggerDownload(wb: XLSX.WorkBook, filename: string): void {
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  return makeSheet(rows, [28, 16, 16, 14, 12])
 }
 
 export function exportarComparativo(
@@ -449,12 +476,12 @@ export function exportarComparativo(
     : sortedB.length <= 12 && new Set(sortedB.map(p => p.substring(0, 4))).size === 1 ? yearB
     : `${sortedB[0]}-${sortedB[sortedB.length - 1]}`
 
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, buildComparativoKPISheet(labelA, labelB, a, b), 'KPIs')
-  XLSX.utils.book_append_sheet(wb, buildComparativoERISheet(labelA, labelB, a, b), 'ERI Comparativo')
-  XLSX.utils.book_append_sheet(wb, buildComparativoRatiosSheet(labelA, labelB, a, b), 'Ratios')
+  const wb = makeWorkbook()
+  appendSheet(wb, buildComparativoKPISheet(labelA, labelB, a, b), 'KPIs')
+  appendSheet(wb, buildComparativoERISheet(labelA, labelB, a, b), 'ERI Comparativo')
+  appendSheet(wb, buildComparativoRatiosSheet(labelA, labelB, a, b), 'Ratios')
 
-  const filename = `${ruc}_Comparativo_${labelA}_vs_${labelB}.xlsx`
+  const filename = `${ruc}_Comparativo_${labelA}_vs_${labelB}.xls`
   triggerDownload(wb, filename)
 }
 
@@ -465,24 +492,12 @@ export function exportarExcel(
   esf: ESF,
   metricas: MetricsResult,
 ): void {
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, buildERISheet(eri), 'ERI')
-  XLSX.utils.book_append_sheet(wb, buildESFSheet(esf, eri.utilidadNeta, eri.ptEnAsientos, eri.irEnAsientos, eri.participacionTrabajadores, eri.impuestoRenta), 'ESF')
-  XLSX.utils.book_append_sheet(wb, buildRatiosSheet(metricas), 'Ratios')
+  const wb = makeWorkbook()
+  appendSheet(wb, buildERISheet(eri), 'ERI')
+  appendSheet(wb, buildESFSheet(esf, eri.utilidadNeta, eri.ptEnAsientos, eri.irEnAsientos, eri.participacionTrabajadores, eri.impuestoRenta), 'ESF')
+  appendSheet(wb, buildRatiosSheet(metricas), 'Ratios')
 
   const filename = buildFilename(ruc, periods)
 
-  // Browser-compatible download via Blob
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  triggerDownload(wb, filename)
 }
